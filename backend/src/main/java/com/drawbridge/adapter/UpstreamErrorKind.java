@@ -1,0 +1,46 @@
+package com.drawbridge.adapter;
+
+import lombok.Getter;
+
+/**
+ * 上游错误类别（网关内部归一化）。
+ * retryable=是否换下一候选渠道重试（上游受理成功后一律不再重试，与本分类无关）；
+ * channelAction=对该渠道的处置。
+ */
+@Getter
+public enum UpstreamErrorKind {
+
+    /** 连接/读取超时、网络不可达 */
+    NETWORK_TIMEOUT(true, ChannelAction.BREAKER_FEED, "UPSTREAM_ALL_FAILED"),
+    /** 上游 5xx */
+    UPSTREAM_SERVER_ERROR(true, ChannelAction.BREAKER_FEED, "UPSTREAM_ALL_FAILED"),
+    /** 上游 429：换渠道重试，本渠道短冷却 */
+    RATE_LIMITED(true, ChannelAction.COOLDOWN, "UPSTREAM_ALL_FAILED"),
+    /** 上游余额耗尽：换渠道重试，本渠道自动停用并告警 */
+    BALANCE_EXHAUSTED(true, ChannelAction.AUTO_DISABLE, "UPSTREAM_ALL_FAILED"),
+    /** 上游 Key 失效/被封：换渠道重试，本渠道自动停用并告警 */
+    AUTH_FAILED(true, ChannelAction.AUTO_DISABLE, "UPSTREAM_ALL_FAILED"),
+    /** 提示词/内容审核拦截：不重试，作为任务结果返回业务方 */
+    CONTENT_REJECTED(false, ChannelAction.NONE, "CONTENT_REJECTED"),
+    /** 参数/模型/尺寸上游不支持：不重试，作为任务结果返回业务方 */
+    PARAM_INVALID(false, ChannelAction.NONE, "PARAM_INVALID"),
+    /** 异步任务在上游侧失败（轮询期）：不重试（已受理），作为任务结果返回 */
+    UPSTREAM_TASK_FAILED(false, ChannelAction.NONE, "UPSTREAM_TASK_FAILED"),
+    /** 未识别错误：按可重试处理 */
+    UNKNOWN(true, ChannelAction.BREAKER_FEED, "UPSTREAM_ALL_FAILED");
+
+    private final boolean retryable;
+    private final ChannelAction channelAction;
+    /** 映射到对外任务 error_code */
+    private final String externalCode;
+
+    UpstreamErrorKind(boolean retryable, ChannelAction channelAction, String externalCode) {
+        this.retryable = retryable;
+        this.channelAction = channelAction;
+        this.externalCode = externalCode;
+    }
+
+    public enum ChannelAction {
+        NONE, BREAKER_FEED, COOLDOWN, AUTO_DISABLE
+    }
+}

@@ -1,0 +1,14 @@
+# build artifacts
+backend/target/
+web/node_modules/
+web/dist/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# logs & local
+*.log
+application-local.yml
+.DS_Store

@@ -1,0 +1,228 @@
+package com.drawbridge.openapi;
+
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.drawbridge.billing.BillingService;
+import com.drawbridge.common.ApiResponse;
+import com.drawbridge.common.BizException;
+import com.drawbridge.common.ErrorCode;
+import com.drawbridge.common.Ids;
+import com.drawbridge.common.JsonUtil;
+import com.drawbridge.common.PageResult;
+import com.drawbridge.configprops.DrawbridgeProperties;
+import com.drawbridge.domain.entity.ApiToken;
+import com.drawbridge.domain.entity.GenerateTask;
+import com.drawbridge.domain.entity.ModelGroup;
+import com.drawbridge.domain.mapper.ApiTokenMapper;
+import com.drawbridge.domain.mapper.GenerateTaskMapper;
+import com.drawbridge.domain.mapper.ModelGroupMapper;
+import com.drawbridge.infrastructure.config.ChannelConfigService;
+import com.drawbridge.infrastructure.config.ConfigKeys;
+import com.drawbridge.infrastructure.config.SystemConfigService;
+import com.drawbridge.openapi.dto.OpenApiDtos;
+import com.drawbridge.task.MilestoneRegistry;
+import com.drawbridge.task.SubmitExecutor;
+import com.drawbridge.task.TaskStatus;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * 业务方 API：提交生图任务 / 查询任务 / 模型表 / 余额。
+ * 统一任务契约：提交秒回任务号（同步上游会在本请求内等到出图再返回），
+ * 异步上游用查询接口轮询。
+ */
+@Slf4j
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/v1")
+public class OpenApiController {
+
+    private final ChannelConfigService configService;
+    private final SystemConfigService config;
+    private final DrawbridgeProperties props;
+    private final BillingService billing;
+    private final GenerateTaskMapper taskMapper;
+    private final ModelGroupMapper groupMapper;
+    private final ApiTokenMapper tokenMapper;
+    private final SubmitExecutor submitExecutor;
+    private final MilestoneRegistry milestones;
+    private final TokenRateLimiter rateLimiter;
+
+    @PostMapping("/images/tasks")
+    public ApiResponse<OpenApiDtos.TaskSummary> submit(
+            @RequestAttribute(OpenApiAuthInterceptor.ATTR_AUTH) TokenService.AuthContext ctx,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody OpenApiDtos.ImageSubmitRequest body) {
+
+        String groupCode = body.model() == null ? "" : body.model().trim();
+        ModelGroup group = configService.groupByCode(groupCode);
+        if (group == null || group.getEnabled() == null || group.getEnabled() != 1) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "模型不存在或已停用: " + groupCode);
+        }
+        if (!ctx.canUse(groupCode)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "令牌未授权访问模型: " + groupCode);
+        }
+        if (!rateLimiter.allow(ctx.token().getId())) {
+            throw new BizException(ErrorCode.RATE_LIMITED);
+        }
+        validatePayload(body);
+
+        int n = body.n() == null ? 1 : body.n();
+        // 幂等：同 app 同 key 直接返回已有任务
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            GenerateTask existing = taskMapper.selectOne(Wrappers.<GenerateTask>lambdaQuery()
+                    .eq(GenerateTask::getAppId, ctx.app().getId())
+                    .eq(GenerateTask::getClientRequestId, idempotencyKey)
+                    .last("limit 1"));
+            if (existing != null) {
+                return ApiResponse.ok(OpenApiDtos.TaskSummary.of(existing));
+            }
+        }
+
+        BigDecimal freeze = group.getBizPrice() == null ? BigDecimal.ZERO
+                : group.getBizPrice().multiply(BigDecimal.valueOf(n));
+        if (!billing.freeze(ctx.token().getId(), freeze)) {
+            throw new BizException(ErrorCode.QUOTA_EXCEEDED, "令牌额度不足");
+        }
+
+        GenerateTask task = new GenerateTask();
+        task.setTaskId(Ids.newTaskId());
+        task.setAppId(ctx.app().getId());
+        task.setTokenId(ctx.token().getId());
+        task.setGroupCode(groupCode);
+        task.setStatus(TaskStatus.SUBMITTED.name());
+        task.setImageCount(n);
+        task.setBizRequest(JsonUtil.truncateBytes(JsonUtil.toJson(body),
+                config.getInt(ConfigKeys.RETENTION_BODY_MAX_BYTES)));
+        task.setFreezeAmount(freeze);
+        task.setClientRequestId(idempotencyKey);
+        LocalDateTime now = LocalDateTime.now();
+        task.setNextPollTime(now);
+        task.setExpiresAt(now.plusNanos(config.getLong(ConfigKeys.TASK_MAX_LIFETIME_MS) * 1_000_000));
+        task.setCreatedAt(now);
+        task.setUpdatedAt(now);
+        try {
+            taskMapper.insert(task);
+        } catch (DuplicateKeyException e) {
+            // 并发幂等竞争：退回已存在的任务（冻结额立即退回）
+            billing.refund(ctx.token().getId(), freeze);
+            GenerateTask existing = taskMapper.selectOne(Wrappers.<GenerateTask>lambdaQuery()
+                    .eq(GenerateTask::getAppId, ctx.app().getId())
+                    .eq(GenerateTask::getClientRequestId, idempotencyKey)
+                    .last("limit 1"));
+            return ApiResponse.ok(OpenApiDtos.TaskSummary.of(existing));
+        }
+
+        // 注册等待 → 直派流水线（扫描是安全网）→ 等到"上游受理/任务终态"或超时
+        var waiter = milestones.register(task.getTaskId());
+        submitExecutor.kick(task.getId());
+        try {
+            waiter.get(props.submitWaitTimeoutMs(), TimeUnit.MILLISECONDS);
+        } catch (Exception ignored) {
+            // 超时/中断都按当前状态返回，业务方随后用查询接口跟进
+        }
+        return ApiResponse.ok(OpenApiDtos.TaskSummary.of(taskMapper.selectById(task.getId())));
+    }
+
+    @GetMapping("/images/tasks/{taskId}")
+    public ApiResponse<OpenApiDtos.TaskSummary> query(
+            @RequestAttribute(OpenApiAuthInterceptor.ATTR_AUTH) TokenService.AuthContext ctx,
+            @PathVariable String taskId) {
+        GenerateTask task = taskMapper.selectOne(Wrappers.<GenerateTask>lambdaQuery()
+                .eq(GenerateTask::getTaskId, taskId)
+                .eq(GenerateTask::getAppId, ctx.app().getId()));
+        if (task == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "任务不存在");
+        }
+        return ApiResponse.ok(OpenApiDtos.TaskSummary.of(task));
+    }
+
+    @GetMapping("/images/tasks")
+    public ApiResponse<PageResult<OpenApiDtos.TaskSummary>> list(
+            @RequestAttribute(OpenApiAuthInterceptor.ATTR_AUTH) TokenService.AuthContext ctx,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") long size,
+            @RequestParam(required = false) String status) {
+        var wrapper = Wrappers.<GenerateTask>lambdaQuery()
+                .eq(GenerateTask::getAppId, ctx.app().getId())
+                .orderByDesc(GenerateTask::getId);
+        if (status != null && !status.isBlank()) {
+            wrapper.eq(GenerateTask::getStatus, status);
+        }
+        Page<GenerateTask> result = taskMapper.selectPage(new Page<>(page, Math.min(size, 100)), wrapper);
+        List<OpenApiDtos.TaskSummary> records = result.getRecords().stream()
+                .map(OpenApiDtos.TaskSummary::of).toList();
+        return ApiResponse.ok(new PageResult<>(result.getTotal(), records));
+    }
+
+    @GetMapping("/images/models")
+    public ApiResponse<List<OpenApiDtos.ModelView>> models(
+            @RequestAttribute(OpenApiAuthInterceptor.ATTR_AUTH) TokenService.AuthContext ctx) {
+        List<OpenApiDtos.ModelView> models = groupMapper.selectList(
+                        Wrappers.<ModelGroup>lambdaQuery()
+                                .eq(ModelGroup::getEnabled, 1))
+                .stream()
+                .filter(g -> ctx.canUse(g.getGroupCode()))
+                .map(g -> new OpenApiDtos.ModelView(g.getGroupCode(),
+                        g.getDisplayName(), g.getBizPrice(), g.getStrategy()))
+                .toList();
+        return ApiResponse.ok(models);
+    }
+
+    @GetMapping("/balance")
+    public ApiResponse<OpenApiDtos.BalanceView> balance(
+            @RequestAttribute(OpenApiAuthInterceptor.ATTR_AUTH) TokenService.AuthContext ctx) {
+        ApiToken token = tokenMapper.selectById(ctx.token().getId());
+        return ApiResponse.ok(new OpenApiDtos.BalanceView(
+                token.getQuotaTotal(), token.getQuotaUsed(), "元"));
+    }
+
+    private void validatePayload(OpenApiDtos.ImageSubmitRequest body) {
+        boolean hasPrompt = body.prompt() != null && !body.prompt().isBlank();
+        boolean hasImage = (body.image() != null && !body.image().isBlank())
+                || (body.images() != null && !body.images().isEmpty());
+        if (!hasPrompt && !hasImage) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "prompt 与 image 至少提供一个");
+        }
+        if (body.prompt() != null && body.prompt().length() > 4000) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "prompt 超过 4000 字符");
+        }
+        if (body.n() != null && (body.n() < 1 || body.n() > 6)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "n 取值 1-6");
+        }
+        checkUrl(body.image());
+        if (body.images() != null) {
+            if (body.images().size() > 4) {
+                throw new BizException(ErrorCode.PARAM_INVALID, "参考图最多 4 张");
+            }
+            body.images().forEach(this::checkUrl);
+        }
+    }
+
+    private void checkUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return;
+        }
+        String u = url.trim();
+        if (!u.startsWith("http://") && !u.startsWith("https://")) {
+            throw new BizException(ErrorCode.PARAM_INVALID,
+                    "参考图必须是公网可访问的 http(s) URL: " + u);
+        }
+    }
+}
