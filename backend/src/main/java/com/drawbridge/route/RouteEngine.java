@@ -14,8 +14,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 路由引擎：分组 → 可用候选序列。
@@ -31,7 +31,13 @@ public class RouteEngine {
     private final ChannelConfigService configService;
     private final ChannelHealthTracker healthTracker;
     private final CooldownRegistry cooldownRegistry;
-    private final AtomicLong roundRobin = new AtomicLong();
+    /** 轮询记忆：分组 → 上次实际选中的成员 id（按成员身份轮转；分组数据变更时重置，重新生效） */
+    private final Map<Long, Long> lastServedByGroup = new ConcurrentHashMap<>();
+
+    /** 分组数据（成员/顺序/策略）变更后调用：清空轮询记忆，下次从新列表第 1 位开始。 */
+    public void resetPolling(Long groupId) {
+        lastServedByGroup.remove(groupId);
+    }
 
     public List<Candidate> candidatesFor(String groupCode) {
         ModelGroup group = configService.groupByCode(groupCode);
@@ -66,19 +72,44 @@ public class RouteEngine {
             }
             available.add(new Candidate(channel, member));
         }
-        return order(strategy, available);
+        List<Candidate> ordered = order(strategy, available, group.getId());
+        if (strategy == RouteStrategy.POLLING && !ordered.isEmpty()) {
+            lastServedByGroup.put(group.getId(), ordered.getFirst().member().getId());
+        }
+        return ordered;
     }
 
-    private List<Candidate> order(RouteStrategy strategy, List<Candidate> candidates) {
+    private List<Candidate> order(RouteStrategy strategy, List<Candidate> candidates, Long groupId) {
         if (candidates.size() <= 1) {
             return candidates;
         }
         return switch (strategy) {
             case FAILOVER -> candidates;
             case RANDOM -> shuffle(candidates);
-            case POLLING -> rotate(candidates, (int) (roundRobin.getAndIncrement() % candidates.size()));
+            case POLLING -> pollRotate(candidates, groupId);
             case WEIGHTED -> weightedShuffle(candidates);
         };
+    }
+
+    /**
+     * 轮询（按成员身份轮转）：记住分组上次选中的成员，本次从它在序列中的下一个开始。
+     * 管理员手动调整成员顺序不会打断轮转节奏。
+     */
+    private List<Candidate> pollRotate(List<Candidate> candidates, Long groupId) {
+        Long lastId = lastServedByGroup.get(groupId);
+        int n = candidates.size();
+        int start = 0;
+        if (lastId != null) {
+            for (int i = 0; i < n; i++) {
+                if (candidates.get(i).member().getId().equals(lastId)) {
+                    start = (i + 1) % n;
+                    break;
+                }
+            }
+        }
+        List<Candidate> copy = new ArrayList<>(candidates);
+        java.util.Collections.rotate(copy, -start);
+        return copy;
     }
 
     private List<GroupMember> sortByOrder(List<GroupMember> members) {

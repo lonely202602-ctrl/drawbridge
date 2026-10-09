@@ -44,14 +44,19 @@
           <el-table-column prop="phase" label="阶段" width="80" />
           <el-table-column prop="channelName" label="上游" width="110" />
           <el-table-column prop="upstreamModel" label="模型" width="150" />
-          <el-table-column label="结果" width="80">
+          <el-table-column label="结果" width="90">
             <template #default="{ row }">
-              <el-tag :type="row.outcome === 'SUCCESS' ? 'success' : 'danger'">{{ row.outcome }}</el-tag>
+              <el-tag :type="row.outcome === 'SUCCESS' ? 'success' : 'danger'">
+                {{ row.phase === 'SUBMIT' && row.outcome === 'SUCCESS' ? '受理成功' : row.outcome }}
+              </el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="errorKind" label="错误类别" width="150" />
           <el-table-column prop="costMs" label="耗时ms" width="80" />
         </el-table>
+        <div class="hint" style="margin-top: 6px">
+          SUBMIT 阶段的「受理成功」= 上游已接收任务并返回任务号，图片由网关后台轮询推进；任务最终结果以上方任务状态为准。
+        </div>
 
         <h4>① 业务方请求体</h4>
         <pre class="json-block">{{ pretty(detail.task.bizRequest) }}</pre>

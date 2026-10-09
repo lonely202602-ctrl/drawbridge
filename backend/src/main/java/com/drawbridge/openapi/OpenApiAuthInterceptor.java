@@ -23,6 +23,10 @@ public class OpenApiAuthInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
+        // CORS 预检不带业务头，直接放行（真正的鉴权在后续实际请求上）
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
         String authorization = request.getHeader("Authorization");
         if (authorization == null || !authorization.startsWith("Bearer ")) {
             return reject(response, ErrorCode.UNAUTHORIZED, "缺少 Authorization: Bearer sk-xxx");

@@ -65,24 +65,13 @@ CREATE TABLE IF NOT EXISTS group_member (
     KEY idx_group (group_id, enabled)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 
--- 业务方应用
-CREATE TABLE IF NOT EXISTS app (
-    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name       VARCHAR(64)  NOT NULL,
-    contact    VARCHAR(128) NULL,
-    enabled    TINYINT      NOT NULL DEFAULT 1,
-    remark     VARCHAR(255) NULL,
-    created_at DATETIME     NOT NULL,
-    updated_at DATETIME     NOT NULL
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
-
 -- 业务方令牌（SK 只显一次，库存哈希+前缀）
 CREATE TABLE IF NOT EXISTS api_token (
     id             BIGINT AUTO_INCREMENT PRIMARY KEY,
-    app_id         BIGINT        NOT NULL,
     name           VARCHAR(64)   NOT NULL,
     sk_hash        CHAR(64)      NOT NULL,
     sk_prefix      VARCHAR(16)   NOT NULL,
+    sk_enc         TEXT          NULL COMMENT 'AES 加密的完整 SK（支持事后查看）',
     status         TINYINT       NOT NULL DEFAULT 1 COMMENT '1启用/0禁用',
     quota_total    DECIMAL(12, 2) NULL COMMENT '总额度，NULL=不限',
     quota_used     DECIMAL(12, 2) NOT NULL DEFAULT 0,
@@ -90,22 +79,20 @@ CREATE TABLE IF NOT EXISTS api_token (
     expires_at     DATETIME      NULL,
     created_at     DATETIME      NOT NULL,
     updated_at     DATETIME      NOT NULL,
-    UNIQUE KEY uk_sk_hash (sk_hash),
-    KEY idx_app (app_id)
+    UNIQUE KEY uk_sk_hash (sk_hash)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 
 -- 生成任务（DB 当队列，真相源）
 CREATE TABLE IF NOT EXISTS generate_task (
     id                BIGINT AUTO_INCREMENT PRIMARY KEY,
     task_id           VARCHAR(40)  NOT NULL,
-    app_id            BIGINT       NOT NULL,
     token_id          BIGINT       NOT NULL,
     group_code        VARCHAR(64)  NOT NULL,
     status            VARCHAR(16)  NOT NULL DEFAULT 'SUBMITTED' COMMENT 'SUBMITTED/RUNNING/SUCCEEDED/FAILED',
     image_count       INT          NOT NULL DEFAULT 1,
     biz_request       TEXT         NULL COMMENT '业务方原始请求体（截断存档）',
     upstream_request  TEXT         NULL COMMENT '发上游的封装请求体（截断存档）',
-    result            TEXT         NULL COMMENT '结果 JSON（截断存档）',
+    result            MEDIUMTEXT   NULL COMMENT '结果 JSON（b64 内联图最大约 2MB/张，不截断）',
     error_code        VARCHAR(40)  NULL,
     error_msg         VARCHAR(512) NULL,
     channel_id        BIGINT       NULL,
@@ -121,11 +108,10 @@ CREATE TABLE IF NOT EXISTS generate_task (
     created_at        DATETIME     NOT NULL,
     updated_at        DATETIME     NOT NULL,
     UNIQUE KEY uk_task_id (task_id),
-    UNIQUE KEY uk_app_client (app_id, client_request_id),
+    UNIQUE KEY uk_client_request (client_request_id),
     KEY idx_status_nextpoll (status, next_poll_time),
     KEY idx_expires (status, expires_at),
-    KEY idx_app_created (app_id, created_at),
-    KEY idx_created (created_at)
+    KEY idx_token_created (token_id, created_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 
 -- 任务尝试流水（重试时间线）
@@ -149,7 +135,6 @@ CREATE TABLE IF NOT EXISTS task_attempt (
 CREATE TABLE IF NOT EXISTS usage_log (
     id          BIGINT AUTO_INCREMENT PRIMARY KEY,
     task_id     VARCHAR(40)    NOT NULL,
-    app_id      BIGINT         NOT NULL,
     token_id    BIGINT         NOT NULL,
     group_code  VARCHAR(64)    NOT NULL,
     channel_id  BIGINT         NULL,
@@ -159,7 +144,7 @@ CREATE TABLE IF NOT EXISTS usage_log (
     cost_amount DECIMAL(12, 4) NOT NULL DEFAULT 0,
     error_kind  VARCHAR(32)    NULL,
     created_at  DATETIME       NOT NULL,
-    KEY idx_app_created (app_id, created_at),
+    KEY idx_token (token_id),
     KEY idx_created (created_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 

@@ -2,9 +2,7 @@ package com.drawbridge.openapi;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.drawbridge.domain.entity.ApiToken;
-import com.drawbridge.domain.entity.App;
 import com.drawbridge.domain.mapper.ApiTokenMapper;
-import com.drawbridge.domain.mapper.AppMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -20,7 +18,6 @@ import java.util.Set;
 public class TokenService {
 
     private final ApiTokenMapper tokenMapper;
-    private final AppMapper appMapper;
 
     public AuthContext resolve(String sk) {
         String hash = com.drawbridge.common.Ids.sha256Hex(sk);
@@ -32,10 +29,6 @@ public class TokenService {
         if (token.getExpiresAt() != null && token.getExpiresAt().isBefore(LocalDateTime.now())) {
             return null;
         }
-        App app = appMapper.selectById(token.getAppId());
-        if (app == null || app.getEnabled() == null || app.getEnabled() != 1) {
-            return null;
-        }
         Set<String> allowed = null;
         if (token.getAllowedGroups() != null && !token.getAllowedGroups().isBlank()) {
             allowed = com.drawbridge.common.JsonUtil.readTree(token.getAllowedGroups())
@@ -43,10 +36,11 @@ public class TokenService {
                     .map(com.fasterxml.jackson.databind.JsonNode::asText)
                     .collect(java.util.stream.Collectors.toSet());
         }
-        return new AuthContext(app, token, allowed);
+        return new AuthContext(token, allowed);
     }
 
-    public record AuthContext(App app, ApiToken token, Set<String> allowedGroups) {
+    /** 令牌即接入方身份：任务归属与查询隔离都按 tokenId。 */
+    public record AuthContext(ApiToken token, Set<String> allowedGroups) {
 
         public boolean canUse(String groupCode) {
             return allowedGroups == null || allowedGroups.contains(groupCode);

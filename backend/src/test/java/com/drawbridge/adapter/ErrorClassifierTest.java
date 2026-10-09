@@ -4,6 +4,7 @@ import com.drawbridge.common.JsonUtil;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 错误归类测试：覆盖 5 家上游会出现的错误形态。
@@ -52,6 +53,26 @@ class ErrorClassifierTest {
                 openAi(502, "{\"error\":{\"message\":\"bad gateway\"}}").getKind());
         assertEquals(UpstreamErrorKind.PARAM_INVALID,
                 openAi(400, "{\"error\":{\"message\":\"size must be one of supported values\"}}").getKind());
+    }
+
+    @Test
+    void modelUnavailableIsRetryableNotParamError() {
+        // uuapi 真实形态：404 + "not supported by any configured account"（账号池没号）
+        UpstreamCallException e = openAi(404, """
+                {"error":{"message":"Model \\"gpt-image-2\\" is not supported by any configured account in this group"}}
+                """);
+        assertEquals(UpstreamErrorKind.MODEL_UNAVAILABLE, e.getKind());
+        assertTrue(e.getKind().isRetryable(), "没号是渠道侧容量波动，必须可转移");
+
+        // new-api 中文形态：当前分组下无可用渠道（503/404 都可能）
+        assertEquals(UpstreamErrorKind.MODEL_UNAVAILABLE,
+                openAi(503, "{\"error\":{\"message\":\"当前分组 default 下对于模型 gpt-image-2 无可用渠道\"}}").getKind());
+        assertEquals(UpstreamErrorKind.MODEL_UNAVAILABLE,
+                openAi(404, "{\"message\":\"无可用渠道\"}").getKind());
+
+        // 不带文案关键词的普通 404 仍是参数错误（语义：路径/模型名确实不对）
+        assertEquals(UpstreamErrorKind.PARAM_INVALID,
+                openAi(404, "{\"error\":{\"message\":\"not found\"}}").getKind());
     }
 
     @Test

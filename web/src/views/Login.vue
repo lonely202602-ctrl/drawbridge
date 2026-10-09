@@ -1,20 +1,20 @@
 <template>
-  <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f7fa">
-    <el-card style="width: 360px">
-      <h2 style="text-align: center; margin-top: 4px">🌉 drawbridge 控制台</h2>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div style="font-size: 40px; text-align: center">🌉</div>
+      <h2 style="text-align: center; margin: 6px 0 20px">drawbridge 控制台</h2>
       <el-form @keyup.enter="login">
-        <el-form-item><el-input v-model="form.username" placeholder="用户名" /></el-form-item>
-        <el-form-item><el-input v-model="form.password" type="password" placeholder="密码" show-password /></el-form-item>
-        <el-button type="primary" style="width: 100%" :loading="loading" @click="login">登 录</el-button>
+        <el-form-item><el-input v-model="form.username" placeholder="用户名" size="large" /></el-form-item>
+        <el-form-item><el-input v-model="form.password" type="password" placeholder="密码" size="large" show-password /></el-form-item>
+        <el-button type="primary" size="large" round style="width: 100%" :loading="loading" @click="login">登 录</el-button>
       </el-form>
-    </el-card>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import api, { unwrap } from '../api'
 
 const router = useRouter()
@@ -34,3 +34,14 @@ async function login() {
   }
 }
 </script>
+
+<style scoped>
+.login-wrap {
+  display: flex; justify-content: center; align-items: center; height: 100vh;
+  background: #f2f0ea;
+}
+.login-card {
+  background: #fff; border-radius: 22px; padding: 36px 34px 30px; width: 380px;
+  box-shadow: 0 10px 40px rgba(60, 60, 50, 0.1);
+}
+</style>

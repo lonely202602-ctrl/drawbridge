@@ -143,4 +143,61 @@ class OpenAiImagesSyncProviderTest {
         ImageProvider.SubmitOutcome outcome = provider.submit(cmd(), override);
         assertInstanceOf(ImageProvider.SubmitOutcome.Completed.class, outcome);
     }
+
+    @Test
+    void uuapiEditsStyleRoutesReferenceImagesToEditsEndpoint() {
+        ChannelConfigService.ChannelRuntime uu = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl() + "/v1", "k", Map.of(), Map.of("refImageStyle", "uuapi"));
+        ImageProvider.SubmitCommand withImgs = new ImageProvider.SubmitCommand("gpt-image-2.5", "美化", 1,
+                "1024x1024", null, List.of("https://r1.png", "https://r2.png"), null, 10_000);
+
+        // 带参考图 → 打 /images/edits，参考图用 images[].image_url 包裹
+        wm.stubFor(post(urlEqualTo("/v1/images/edits"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"b64_json\":\"aGVsbG8=\"}]}")));
+        ImageProvider.SubmitOutcome.Completed done = assertInstanceOf(
+                ImageProvider.SubmitOutcome.Completed.class, provider.submit(withImgs, uu));
+        assertTrue(done.inlineB64());
+        wm.verify(1, postRequestedFor(urlEqualTo("/v1/images/edits")));
+        String body = wm.findAll(postRequestedFor(urlEqualTo("/v1/images/edits"))).get(0).getBodyAsString();
+        assertTrue(body.contains(
+                "\"images\":[{\"image_url\":\"https://r1.png\"},{\"image_url\":\"https://r2.png\"}]"), body);
+        assertFalse(body.contains("\"image\":"), body);
+
+        // 无参考图 → 仍走同步文生图 generations
+        wm.resetAll();
+        wm.stubFor(post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"url\":\"https://x/a.png\"}]}")));
+        assertInstanceOf(ImageProvider.SubmitOutcome.Completed.class, provider.submit(cmd(), uu));
+        wm.verify(1, postRequestedFor(urlEqualTo("/v1/images/generations")));
+
+        // 默认风格（未配 refImageStyle）带参考图 → 老行为：image 字段直传 generations
+        wm.resetAll();
+        wm.stubFor(post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"url\":\"https://x/b.png\"}]}")));
+        provider.submit(withImgs, rt);
+        String legacyBody = wm.findAll(postRequestedFor(urlEqualTo("/v1/images/generations")))
+                .get(0).getBodyAsString();
+        assertTrue(legacyBody.contains("\"image\":[\"https://r1.png\",\"https://r2.png\"]"), legacyBody);
+    }
+
+    @Test
+    void channelDefaultResponseFormatInjectedButExplicitWins() {
+        ChannelConfigService.ChannelRuntime urlDefault = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl() + "/v1", "k", Map.of(), Map.of("defaultResponseFormat", "url"));
+
+        // 业务方未指定 → 渠道默认代为注入 response_format=url
+        String injected = provider.buildRequestJson(cmd(), urlDefault);
+        assertTrue(injected.contains("\"response_format\":\"url\""), injected);
+
+        // 业务方显式指定 → 以业务方为准，渠道默认不覆盖
+        ImageProvider.SubmitCommand explicit = new ImageProvider.SubmitCommand("m1", "p", 1,
+                null, null, null, Map.of("response_format", "b64_json"), 10_000);
+        String body = provider.buildRequestJson(explicit, urlDefault);
+        assertTrue(body.contains("\"response_format\":\"b64_json\""), body);
+        assertFalse(body.contains("\"response_format\":\"url\""), body);
+
+        // 未配默认的渠道 → 完全不注入
+        String untouched = provider.buildRequestJson(cmd(), rt);
+        assertFalse(untouched.contains("response_format"), untouched);
+    }
 }

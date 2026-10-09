@@ -42,17 +42,27 @@ public class CrunTaskProvider implements ImageProvider {
 
     @Override
     public SubmitOutcome submit(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
-        String body = buildRequestJson(cmd, rt);
+        com.fasterxml.jackson.databind.node.ObjectNode body = buildBody(cmd, rt);
         String url = Pointer.joinUrl(rt.baseUrl(),
                 rt.pathOverrides().getOrDefault("submitPath", "/client/job/CreateTask"));
-        UpstreamHttp.HttpResult result = http.postJson(url, authHeaders(rt), body, cmd.timeoutMs());
+        Map<String, String> headers = authHeaders(rt);
+
+        // estimate-credits 免费预检：提前暴露参数错误，resolution 大小写自动纠正
+        body = prevalidate(url, headers, body, cmd.timeoutMs(), rt);
+
+        UpstreamHttp.HttpResult result = http.postJson(url, headers, body.toString(), cmd.timeoutMs());
         JsonNode node = UpstreamHttp.parseBody(result.status(), result.body());
         if (result.status() != 200) {
+            // HTTP 422 的壳里是 message+errors 明细，优先按 Crun 语义透出
+            if (node.hasNonNull("message") || node.hasNonNull("code")) {
+                throw ErrorClassifier.fromCrunCode(
+                        node.path("code").asInt(result.status()), crunDetail(node));
+            }
             throw ErrorClassifier.fromOpenAi(result.status(), node);
         }
         int code = node.path("code").asInt(0);
         if (code != 200) {
-            throw ErrorClassifier.fromCrunCode(code, node.path("message").asText("Crun 未知错误"));
+            throw ErrorClassifier.fromCrunCode(code, crunDetail(node));
         }
         String taskId = node.path("data").path("task_id").asText(null);
         if (taskId == null || taskId.isBlank()) {
@@ -60,6 +70,69 @@ public class CrunTaskProvider implements ImageProvider {
                     "Crun CreateTask 成功但缺少 task_id", result.status());
         }
         return new SubmitOutcome.Accepted(taskId, result.body());
+    }
+
+    /**
+     * estimate-credits 免费预检（Crun 各模型参数枚举不一致，如 resolution 大小写按模型而异）：
+     * 业务码 422 且提示 resolution → 自动翻转大小写重估，通过则用纠正后的请求体提交；
+     * 其它 422 把 errors 明细透出为 PARAM_INVALID；预检自身网络异常不阻断（以 CreateTask 真实响应为准）。
+     */
+    private com.fasterxml.jackson.databind.node.ObjectNode prevalidate(String createUrl,
+            Map<String, String> headers, com.fasterxml.jackson.databind.node.ObjectNode body,
+            int timeoutMs, ChannelConfigService.ChannelRuntime rt) {
+        String estUrl = Pointer.joinUrl(rt.baseUrl(),
+                rt.pathOverrides().getOrDefault("estimatePath", "/client/job/estimate-credits"));
+        UpstreamCallException fatal = null;
+        try {
+            UpstreamHttp.HttpResult r = http.postJson(estUrl, headers, body.toString(),
+                    Math.min(timeoutMs, 15000));
+            // Crun 校验错误直接回 HTTP 422（body 里也有 code=422/errors 明细），两种形态都认
+            JsonNode node = com.drawbridge.common.JsonUtil.readTree(r.body());
+            boolean validationError = r.status() == 422 || node.path("code").asInt(0) == 422;
+            if (validationError) {
+                String detail = crunDetail(node);
+                JsonNode input = body.path("input");
+                if (detail.contains("resolution") && input.hasNonNull("resolution")) {
+                    com.fasterxml.jackson.databind.node.ObjectNode flipped = body.deepCopy();
+                    String res = input.path("resolution").asText();
+                    ((com.fasterxml.jackson.databind.node.ObjectNode) flipped.path("input"))
+                            .put("resolution", flipCase(res));
+                    UpstreamHttp.HttpResult r2 = http.postJson(estUrl, headers, flipped.toString(),
+                            Math.min(timeoutMs, 15000));
+                    boolean flipOk = r2.status() == 200
+                            && com.drawbridge.common.JsonUtil.readTree(r2.body()).path("code").asInt(0) == 200;
+                    if (flipOk) {
+                        return flipped;
+                    }
+                }
+                fatal = new UpstreamCallException(UpstreamErrorKind.PARAM_INVALID,
+                        "Crun 参数错误: " + detail, r.status());
+            }
+        } catch (Exception ignore) {
+            // 预检不可用（网络/响应异常）不阻断提交，以 CreateTask 真实响应为准
+        }
+        if (fatal != null) {
+            throw fatal;
+        }
+        return body;
+    }
+
+    private static String flipCase(String resolution) {
+        return resolution.equals(resolution.toLowerCase())
+                ? resolution.toUpperCase(java.util.Locale.ROOT)
+                : resolution.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** Crun 422 的 errors 数组是精确定位（哪个字段为什么不行），拼进错误消息便于排障。 */
+    private static String crunDetail(JsonNode node) {
+        String message = node.path("message").asText("Crun 未知错误");
+        JsonNode errors = node.path("errors");
+        if (errors.isArray() && !errors.isEmpty()) {
+            StringBuilder sb = new StringBuilder(message).append(" [");
+            errors.forEach(e -> sb.append(e.asText()).append("; "));
+            return sb.substring(0, sb.length() - 2) + "]";
+        }
+        return message;
     }
 
     @Override
@@ -104,6 +177,11 @@ public class CrunTaskProvider implements ImageProvider {
 
     @Override
     public String buildRequestJson(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
+        return buildBody(cmd, rt).toString();
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode buildBody(SubmitCommand cmd,
+                                                                     ChannelConfigService.ChannelRuntime rt) {
         ObjectNode input = JsonUtil.MAPPER.createObjectNode();
         input.put("prompt", cmd.prompt() == null ? "" : cmd.prompt());
         // gpt-image-2-5 家族接受 model_variant（flare 快/sunburst 细节强）
@@ -133,7 +211,7 @@ public class CrunTaskProvider implements ImageProvider {
         ObjectNode body = JsonUtil.MAPPER.createObjectNode();
         body.put("model", cmd.upstreamModel());
         body.set("input", input);
-        return body.toString();
+        return body;
     }
 
     /** size（WxH）→ Crun resolution：1k/2k/4k（长边 4096+ 为 4k，2048+ 为 2k）。 */

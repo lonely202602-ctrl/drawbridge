@@ -15,6 +15,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -90,6 +91,32 @@ class CrunTaskProviderTest {
         } catch (UpstreamCallException e) {
             assertEquals(expected, e.getKind());
         }
+    }
+
+    @Test
+    void resolutionCaseAutoFlip() {
+        // 预检发现 resolution 大小写不符 → 自动翻转为大写 '1K' 后提交
+        wm.stubFor(post(urlEqualTo("/client/job/estimate-credits"))
+                .inScenario("flip").whenScenarioStateIs("Started")
+                .willReturn(aResponse().withStatus(422).withBody(
+                        "{\"code\":422,\"message\":\"Missing Params or Type Error\","
+                                + "\"errors\":[\"Value error, Invalid input for model google/nano-banana-2-1: "
+                                + "resolution: Input should be '1K', '2K' or '4K\"]}"))
+                .willSetStateTo("FLIPPED"));
+        wm.stubFor(post(urlEqualTo("/client/job/estimate-credits"))
+                .inScenario("flip").whenScenarioStateIs("FLIPPED")
+                .willReturn(aResponse().withStatus(200).withBody(
+                        "{\"code\":200,\"message\":\"success\",\"data\":{\"credits\":3}}")));
+        wm.stubFor(post(urlEqualTo("/client/job/CreateTask"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"code\":200,\"data\":{\"task_id\":\"ct_flip\"}}")));
+        ImageProvider.SubmitCommand cmd = new ImageProvider.SubmitCommand(
+                "google/nano-banana-2-1", "cat", 1, "1024x1024", null, null, null, 10000);
+        ImageProvider.SubmitOutcome.Accepted accepted = assertInstanceOf(
+                ImageProvider.SubmitOutcome.Accepted.class, provider.submit(cmd, rt));
+        assertEquals("ct_flip", accepted.upstreamTaskId());
+        wm.verify(postRequestedFor(urlEqualTo("/client/job/CreateTask"))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.containing("\"resolution\":\"1K\"")));
     }
 
     @Test

@@ -20,8 +20,6 @@ public class UsageLog {
 
     private String taskId;
 
-    private Long appId;
-
     private Long tokenId;
 
     private String groupCode;

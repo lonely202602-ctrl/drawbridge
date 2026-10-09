@@ -4,6 +4,7 @@ import com.drawbridge.admin.AdminAuthInterceptor;
 import com.drawbridge.openapi.OpenApiAuthInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -25,6 +26,16 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(adminAuthInterceptor)
                 .addPathPatterns("/admin/**")
                 .excludePathPatterns("/admin/login");
+    }
+
+    /** 业务接口放开 CORS：支持浏览器端工具（Apifox 网页版等）直连调试；管理端不放开。 */
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/v1/**")
+                .allowedOriginPatterns("*")
+                .allowedMethods("GET", "POST")
+                .allowedHeaders("Authorization", "Content-Type", "X-Idempotency-Key")
+                .maxAge(3600);
     }
 
     @Override

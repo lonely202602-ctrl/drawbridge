@@ -7,6 +7,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
@@ -16,6 +17,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
@@ -127,6 +129,61 @@ class OpenAiAsyncTaskProviderTest {
         } catch (UpstreamCallException e) {
             assertEquals(UpstreamErrorKind.UNKNOWN, e.getKind());
         }
+    }
+
+    @Test
+    void uuapiEditsAsyncRoutesReferenceImagesWithTaskIdAccepted() {
+        // UUAPI 异步图生图：带参考图自动切 /images/edits/async，参考图包成 images[].image_url
+        ChannelConfigService.ChannelRuntime uu = rt(Map.of("flavor", "uu", "refImageStyle", "uuapi"));
+        ImageProvider.SubmitCommand withImg = new ImageProvider.SubmitCommand("gpt-image-2.5", "美化", 1,
+                "1024x1024", null, List.of("https://r1.png"), null, 10_000);
+        wm.stubFor(post(urlEqualTo("/v1/images/edits/async"))
+                .willReturn(aResponse().withStatus(202)
+                        .withBody("{\"task_id\":\"imgtask_1\",\"status\":\"pending\"}")));
+        ImageProvider.SubmitOutcome.Accepted accepted = assertInstanceOf(
+                ImageProvider.SubmitOutcome.Accepted.class, provider.submit(withImg, uu));
+        assertEquals("imgtask_1", accepted.upstreamTaskId());
+
+        // 轮询：completed 时结果嵌在 result.data[*].url
+        wm.stubFor(get(urlEqualTo("/v1/images/tasks/imgtask_1"))
+                .willReturn(aResponse().withStatus(200).withBody("""
+                        {"status":"completed","result":{"data":[{"url":"https://cdn.out/final.png"}]}}
+                        """)));
+        ChannelConfigService.ChannelRuntime uuUrl = rt(Map.of("flavor", "uu",
+                "refImageStyle", "uuapi", "urlField", "result.data[*].url"));
+        ImageProvider.PollOutcome poll = provider.poll("imgtask_1", uuUrl);
+        assertEquals(ImageProvider.PollOutcome.Phase.SUCCEEDED, poll.phase());
+        assertEquals("https://cdn.out/final.png", poll.resultUrls().getFirst());
+    }
+
+    @Test
+    void syncShapeResponseCompletedInsteadOfDiscarded() {
+        // 渠道配错的真实场景：异步适配器打到了同步生图端点，HTTP 200 直接回图片、无任务号
+        ChannelConfigService.ChannelRuntime nezha = rt(Map.of("flavor", "nezha"));
+
+        // b64 形状 → 收下，转 data URI
+        wm.stubFor(post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"b64_json\":\"aGVsbG8=\"}]}")));
+        ImageProvider.SubmitOutcome.Completed b64 = assertInstanceOf(
+                ImageProvider.SubmitOutcome.Completed.class, provider.submit(cmd(), nezha));
+        assertEquals(List.of("data:image/png;base64,aGVsbG8="), b64.resultUrls());
+        assertTrue(b64.inlineB64());
+
+        // url 形状 → 同样收下
+        wm.resetAll();
+        wm.stubFor(post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"url\":\"https://x/a.png\"}]}")));
+        ImageProvider.SubmitOutcome.Completed url = assertInstanceOf(
+                ImageProvider.SubmitOutcome.Completed.class, provider.submit(cmd(), nezha));
+        assertEquals(List.of("https://x/a.png"), url.resultUrls());
+
+        // 有任务号的正常异步响应不受影响
+        wm.resetAll();
+        wm.stubFor(post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(202).withBody("{\"id\":\"job_9\"}")));
+        ImageProvider.SubmitOutcome.Accepted accepted = assertInstanceOf(
+                ImageProvider.SubmitOutcome.Accepted.class, provider.submit(cmd(), nezha));
+        assertEquals("job_9", accepted.upstreamTaskId());
     }
 
     @Test

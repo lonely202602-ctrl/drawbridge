@@ -1,40 +1,31 @@
 <template>
   <div>
-    <el-row :gutter="16">
-      <el-col :span="5" v-for="c in cards" :key="c.label">
-        <el-card><div class="stat-label">{{ c.label }}</div><div class="stat-value">{{ c.value }}</div></el-card>
-      </el-col>
-    </el-row>
+    <div class="stat-strip">
+      <div class="stat-cell"><div><div class="num">{{ data.todayTotal ?? '-' }}</div><div class="lbl">今日任务</div></div></div>
+      <div class="stat-cell"><div><div class="num" style="color: #b4523f">{{ data.todayFailed ?? '-' }}</div><div class="lbl">今日失败</div></div></div>
+      <div class="stat-cell"><div><div class="num" style="color: #a4712a">{{ data.inflight ?? '-' }}</div><div class="lbl">在途任务</div></div></div>
+      <div class="stat-cell"><div><div class="num" :style="data.oldestPendingSec > 60 ? 'color:#b4523f' : ''">{{ data.oldestPendingSec ?? '-' }}s</div><div class="lbl">最老在途</div></div></div>
+      <div class="stat-cell"><div><div class="num">{{ data.globalUpstreamInflight ?? '-' }}</div><div class="lbl">上游并发中</div></div></div>
+    </div>
 
-    <h3>渠道健康</h3>
-    <el-table :data="channels" size="small" border>
-      <el-table-column prop="name" label="渠道" />
-      <el-table-column prop="protocol" label="协议" />
-      <el-table-column label="启停" width="90">
-        <template #default="{ row }">
-          <el-tag :type="row.enabled === 1 ? 'success' : 'info'">{{ row.enabled === 1 ? '启用' : '停用' }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="140">
-        <template #default="{ row }">
-          <el-tag :type="statusTag(row.status).type">{{ statusTag(row.status).text }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="熔断" width="90">
-        <template #default="{ row }">
-          <el-tag v-if="row.health === 2" type="danger">熔断中</el-tag>
-          <el-tag v-else-if="row.health === 3" type="warning">半开探测</el-tag>
-          <el-tag v-else type="success">正常</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="冷却" width="90">
-        <template #default="{ row }">
-          <el-tag v-if="row.cooling" type="warning">冷却中</el-tag>
-          <span v-else>-</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="statusReason" label="原因" />
-    </el-table>
+    <h3 style="margin: 20px 4px 12px">渠道健康</h3>
+    <div class="card-wall">
+      <div v-for="c in channels" :key="c.id" class="db-card">
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <b>{{ c.name }}</b>
+          <span class="badge" :class="healthBadge(c)">{{ healthText(c) }}</span>
+        </div>
+        <div class="hint" style="margin-top: 8px">
+          {{ protoLabel(c.protocol) }} ·
+          <span v-if="c.statusReason">{{ c.statusReason }}</span>
+          <span v-else-if="c.enabled === 1">调度正常</span>
+          <span v-else>已停用</span>
+        </div>
+      </div>
+      <div v-if="!channels.length" class="db-card hint" style="text-align: center; padding: 30px">
+        暂无渠道数据
+      </div>
+    </div>
   </div>
 </template>
 
@@ -44,19 +35,21 @@ import api, { unwrap } from '../api'
 
 const data = ref({})
 const timer = ref(null)
-const cards = computed(() => [
-  { label: '今日任务', value: data.value.todayTotal ?? '-' },
-  { label: '今日失败', value: data.value.todayFailed ?? '-' },
-  { label: '在途任务', value: data.value.inflight ?? '-' },
-  { label: '最老在途(秒)', value: data.value.oldestPendingSec ?? '-' },
-  { label: '上游并发中', value: data.value.globalUpstreamInflight ?? '-' }
-])
 const channels = computed(() => data.value.channels || [])
 
-function statusTag(s) {
-  return { 1: { type: 'success', text: '正常' }, 2: { type: 'danger', text: '熔断' },
-    3: { type: 'warning', text: '半开' }, 4: { type: 'danger', text: '余额停用' },
-    0: { type: 'info', text: '手动停用' } }[s] || { type: 'info', text: s }
+const protoLabel = v => ({ OPENAI_IMAGES_SYNC: 'OpenAI 同步', OPENAI_ASYNC_TASK: 'OpenAI 异步', CRUN_TASK: 'Crun', VOLCANO_ARK: '火山方舟' }[v] || v)
+
+function healthText(c) {
+  if (c.enabled !== 1 || c.status === 0) return '手动停用'
+  if (c.status === 4) return '余额停用'
+  if (c.health === 2 || c.status === 2) return '熔断中'
+  if (c.health === 3 || c.status === 3) return '半开探测'
+  if (c.cooling) return '限流冷却'
+  return '正常'
+}
+function healthBadge(c) {
+  const t = healthText(c)
+  return t === '正常' ? 'green' : (t === '手动停用' ? 'gray' : (t === '半开探测' || t === '限流冷却' ? 'orange' : 'red'))
 }
 
 async function load() {
@@ -69,8 +62,3 @@ onMounted(() => {
 })
 onBeforeUnmount(() => clearInterval(timer.value))
 </script>
-
-<style scoped>
-.stat-label { color: #888; font-size: 13px; }
-.stat-value { font-size: 26px; font-weight: bold; margin-top: 6px; }
-</style>

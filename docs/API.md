@@ -11,6 +11,7 @@ Base URL：`http://<网关地址>:8180`
 - `code = 0` 成功；非 0 见文末错误码表。
 - 鉴权：所有接口携带 `Authorization: Bearer sk-xxxx`（SK 在 drawbridge 平台创建，只显示一次）。
 - 结果不落盘：生成的图片/视频 URL 为上游原样返回，**有有效期**，请及时取用并转存到你方存储。
+- 纯网关模式：**不计费、不扣额度**，失败任务也不会产生任何费用。
 
 ---
 
@@ -25,7 +26,7 @@ POST /v1/images/tasks
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | model | string | 是 | 模型分组名（平台分配，如 `image2.5`） |
-| prompt | string | 与 image 二选一 | 提示词，≤4000 字符 |
+| prompt | string | 与 images 二选一 | 提示词，≤4000 字符 |
 | n | int | 否 | 张数，1-6，默认 1（按 n 计费） |
 | size | string | 否 | 如 `1024x1024`（是否支持取决于模型） |
 | aspectRatio | string | 否 | 如 `3:2`（部分模型支持） |
@@ -45,7 +46,6 @@ POST /v1/images/tasks
   "n": 1,
   "result": null,
   "error": null,
-  "charge": 0.02,
   "createdAt": "2026-10-08T18:00:00",
   "finishTime": null
 }
@@ -80,13 +80,13 @@ GET /v1/images/tasks/{taskId}
   "data": {
     "taskId": "tsk_xxx_yyy", "model": "image2.5", "status": "SUCCEEDED", "n": 1,
     "result": { "urls": ["https://.../image.png"] },
-    "error": null, "charge": 0.02,
+    "error": null,
     "createdAt": "2026-10-08T18:00:00", "finishTime": "2026-10-08T18:00:31"
   }
 }
 ```
 
-失败响应示例（内容类错误**不扣费**）：
+失败响应示例：
 
 ```json
 { "error": { "code": "CONTENT_REJECTED", "message": "提示词包含敏感内容" } }
@@ -105,15 +105,6 @@ GET /v1/images/models
 → data: [ { "model": "image2.5", "displayName": "Image 2.5", "price": 0.02, "strategy": "FAILOVER" } ]
 ```
 
-## 5. 余额
-
-```
-GET /v1/balance
-→ data: { "quotaTotal": 100.00, "quotaUsed": 3.14, "unit": "元" }
-```
-
-失败任务自动退款（额度返还）。
-
 ---
 
 ## 错误码
@@ -122,7 +113,6 @@ GET /v1/balance
 |---|---|---|
 | 400 | 40001 | 参数不合法（模型不存在/prompt 缺失/参考图非公网 URL 等） |
 | 401 | 40101 | 令牌无效/停用/过期 |
-| 402 | 40201 | 额度不足 |
 | 403 | 40301 | 令牌未授权该模型分组 |
 | 404 | 40404 | 任务不存在 |
 | 429 | 42901 | 触发限流（默认 120 次/分钟/令牌），稍后重试 |
@@ -138,5 +128,8 @@ GET /v1/balance
 | TIMEOUT | 超过最大生命周期（默认 15 分钟） | 否 |
 | UPSTREAM_ALL_FAILED | 重试后所有可用上游仍失败 | 否 |
 | NO_AVAILABLE_CHANNEL | 该分组当前无可用上游 | 否 |
+| UPSTREAM_MODEL_NOT_PERMITTED | 当前上游无此模型权限（已自动换下一渠道重试） | 否 |
+
+（失败一律不计费。）
 
 **调用建议**：提交后每 2~5 秒轮询一次查询接口；SUCCEEDED 后立即下载转存结果 URL（会过期）。

@@ -22,6 +22,20 @@ public final class ErrorClassifier {
     private static final Pattern AUTH = Pattern.compile(
             "invalid.api.?key|invalid.token|unauthorized|authentication_error|forbidden"
                     + "|鉴权失败|密钥无效|无效的api", Pattern.CASE_INSENSITIVE);
+    /** 输入文件不被支持（如参考图格式/来源不合法）：属请求问题，重试无意义 */
+    private static final Pattern FILE_UNSUPPORTED = Pattern.compile(
+            "file type not supported|unsupported file|invalid file|文件类型不支持|不支持的文件", Pattern.CASE_INSENSITIVE);
+
+    /** Key 有效、但该模型无权限：属模型级问题，换渠道重试而不是停用渠道 */
+    private static final Pattern MODEL_PERM = Pattern.compile(
+            "not authorized to access this model|access to (this )?model.*(denied|not authorized)"
+                    + "|does not have access|无权访问该模型|未开通该模型", Pattern.CASE_INSENSITIVE);
+
+    /** 渠道当前无可用账号/容量服务此模型（如 new-api 系「无可用渠道」、uuapi「not supported by any account」）：
+     *  属渠道侧容量波动，换渠道重试而不是判参数错误（修复：uuapi 没号时任务直接失败、备胎不转移）。 */
+    private static final Pattern MODEL_UNAVAILABLE = Pattern.compile(
+            "not supported by any|no available channel|无可用渠道|无可用账号|无可用模型|no available model",
+            Pattern.CASE_INSENSITIVE);
 
     private ErrorClassifier() {
     }
@@ -36,6 +50,15 @@ public final class ErrorClassifier {
         }
         if (CONTENT.matcher(message).find()) {
             return new UpstreamCallException(UpstreamErrorKind.CONTENT_REJECTED, message, status);
+        }
+        if (MODEL_PERM.matcher(message).find()) {
+            return new UpstreamCallException(UpstreamErrorKind.MODEL_NOT_PERMITTED, message, status);
+        }
+        if (MODEL_UNAVAILABLE.matcher(message).find()) {
+            return new UpstreamCallException(UpstreamErrorKind.MODEL_UNAVAILABLE, message, status);
+        }
+        if (FILE_UNSUPPORTED.matcher(message).find()) {
+            return new UpstreamCallException(UpstreamErrorKind.PARAM_INVALID, message, status);
         }
         if (status == 429 || RATE.matcher(message).find()) {
             return new UpstreamCallException(UpstreamErrorKind.RATE_LIMITED, message, status);
@@ -59,6 +82,15 @@ public final class ErrorClassifier {
         }
         if (CONTENT.matcher(message).find()) {
             return new UpstreamCallException(UpstreamErrorKind.CONTENT_REJECTED, message, code);
+        }
+        if (MODEL_PERM.matcher(message).find()) {
+            return new UpstreamCallException(UpstreamErrorKind.MODEL_NOT_PERMITTED, message, code);
+        }
+        if (MODEL_UNAVAILABLE.matcher(message).find()) {
+            return new UpstreamCallException(UpstreamErrorKind.MODEL_UNAVAILABLE, message, code);
+        }
+        if (FILE_UNSUPPORTED.matcher(message).find()) {
+            return new UpstreamCallException(UpstreamErrorKind.PARAM_INVALID, message, code);
         }
         if (code == 401 || code == 403) {
             return new UpstreamCallException(UpstreamErrorKind.AUTH_FAILED, message, code);

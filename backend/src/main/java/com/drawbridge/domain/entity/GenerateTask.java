@@ -5,13 +5,13 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
  * 生成任务：网关的真相源（DB 当队列，重启不丢）。
  * status：SUBMITTED 待执行 / RUNNING 执行中（含轮询期）/ SUCCEEDED / FAILED。
  * next_poll_time 双语义：SUBMITTED=可提交时间；RUNNING=下次轮询时间（推进即租约）。
+ * 注：freeze_amount/settle_amount 为早期计价方案遗留列，纯网关模式不读写。
  */
 @Data
 @TableName("generate_task")
@@ -21,8 +21,6 @@ public class GenerateTask {
     private Long id;
 
     private String taskId;
-
-    private Long appId;
 
     private Long tokenId;
 
@@ -58,10 +56,6 @@ public class GenerateTask {
 
     /** 生命周期截止：超时判 FAILED(TIMEOUT) */
     private LocalDateTime expiresAt;
-
-    private BigDecimal freezeAmount;
-
-    private BigDecimal settleAmount;
 
     private String clientRequestId;
 

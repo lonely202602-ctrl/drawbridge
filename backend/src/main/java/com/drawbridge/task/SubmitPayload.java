@@ -22,9 +22,6 @@ public record SubmitPayload(
     public static SubmitPayload parse(String json) {
         JsonNode node = JsonUtil.readTree(json);
         List<String> images = new ArrayList<>();
-        if (node.hasNonNull("image") && node.path("image").isTextual()) {
-            images.add(node.get("image").asText());
-        }
         JsonNode imgs = node.path("images");
         if (imgs.isArray()) {
             imgs.forEach(i -> {

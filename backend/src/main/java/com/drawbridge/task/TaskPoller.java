@@ -5,7 +5,6 @@ import com.drawbridge.adapter.ImageProvider;
 import com.drawbridge.adapter.ProviderRegistry;
 import com.drawbridge.adapter.UpstreamCallException;
 import com.drawbridge.adapter.UpstreamErrorKind;
-import com.drawbridge.billing.CostCalc;
 import com.drawbridge.domain.entity.Channel;
 import com.drawbridge.domain.entity.GenerateTask;
 import com.drawbridge.domain.mapper.GenerateTaskMapper;
@@ -96,12 +95,10 @@ public class TaskPoller {
             }
             ChannelConfigService.ChannelRuntime rt = configService.runtimeOf(channel);
             ImageProvider.PollOutcome outcome = provider.poll(task.getUpstreamTaskId(), rt);
-            int n = task.getImageCount() == null ? 1 : task.getImageCount();
             switch (outcome.phase()) {
                 case SUCCEEDED -> {
                     health.recordSuccess(channel.getId());
-                    finisher.complete(taskId, outcome.resultUrls(), outcome.inlineB64(),
-                            CostCalc.costOf(channel, outcome.cost(), n));
+                    finisher.complete(taskId, outcome.resultUrls(), outcome.inlineB64());
                 }
                 case FAILED -> {
                     health.recordSuccess(channel.getId());

@@ -4,7 +4,6 @@ import com.drawbridge.domain.entity.GenerateTask;
 import com.drawbridge.task.TaskStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -22,7 +21,6 @@ public final class OpenApiDtos {
             Integer n,
             String size,
             String aspectRatio,
-            String image,
             List<String> images,
             JsonNode options) {
     }
@@ -35,7 +33,6 @@ public final class OpenApiDtos {
             int n,
             ResultView result,
             ErrorView error,
-            BigDecimal charge,
             LocalDateTime createdAt,
             LocalDateTime finishTime) {
 
@@ -57,7 +54,7 @@ public final class OpenApiDtos {
             return new TaskSummary(task.getTaskId(), task.getGroupCode(),
                     task.getStatus(), task.getImageCount() == null ? 1 : task.getImageCount(),
                     TaskStatus.SUCCEEDED.name().equals(task.getStatus()) ? result : null,
-                    error, task.getFreezeAmount(), task.getCreatedAt(), task.getFinishTime());
+                    error, task.getCreatedAt(), task.getFinishTime());
         }
     }
 
@@ -67,9 +64,6 @@ public final class OpenApiDtos {
     public record ErrorView(String code, String message) {
     }
 
-    public record ModelView(String model, String displayName, BigDecimal price, String strategy) {
-    }
-
-    public record BalanceView(BigDecimal quotaTotal, BigDecimal quotaUsed, String unit) {
+    public record ModelView(String model, String displayName, String strategy) {
     }
 }

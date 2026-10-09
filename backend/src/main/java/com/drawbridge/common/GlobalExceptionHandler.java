@@ -33,6 +33,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(ErrorCode.PARAM_INVALID, "请求体缺失或不是合法 JSON"));
     }
 
+    /** 静态资源不存在（旧页面加载已被新构建替换的脚本等）：404，不算错误。 */
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> noResource(org.springframework.web.servlet.resource.NoResourceFoundException e) {
+        return ResponseEntity.status(404).build();
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> unknown(Exception e) {
         log.error("[drawbridge] 未处理异常", e);

@@ -5,7 +5,6 @@ import com.drawbridge.adapter.ImageProvider;
 import com.drawbridge.adapter.ProviderRegistry;
 import com.drawbridge.adapter.UpstreamCallException;
 import com.drawbridge.adapter.UpstreamErrorKind;
-import com.drawbridge.billing.CostCalc;
 import com.drawbridge.domain.entity.Channel;
 import com.drawbridge.domain.entity.GenerateTask;
 import com.drawbridge.domain.entity.TaskAttempt;
@@ -23,7 +22,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -104,6 +102,8 @@ public class SubmitChain {
                 String requestJson = com.drawbridge.common.JsonUtil.truncateBytes(
                         provider.buildRequestJson(cmd, rt),
                         config.getInt(ConfigKeys.RETENTION_BODY_MAX_BYTES));
+                // 请求体先落档：失败排障时能看到"我们发了什么"
+                archiveUpstreamRequestBody(taskId, requestJson);
 
                 ImageProvider.SubmitOutcome outcome = provider.submit(cmd, rt);
                 recordAttempt(task, channel, candidate.member().getUpstreamModel(),
@@ -112,8 +112,7 @@ public class SubmitChain {
 
                 if (outcome instanceof ImageProvider.SubmitOutcome.Completed completed) {
                     archiveUpstreamRequest(taskId, requestJson, channel.getId());
-                    BigDecimal cost = CostCalc.costOf(channel, completed.cost(), n);
-                    finisher.complete(taskId, completed.resultUrls(), completed.inlineB64(), cost);
+                    finisher.complete(taskId, completed.resultUrls(), completed.inlineB64());
                     return;
                 }
                 if (outcome instanceof ImageProvider.SubmitOutcome.Accepted accepted) {
@@ -169,6 +168,13 @@ public class SubmitChain {
             case NONE -> {
             }
         }
+    }
+
+    private void archiveUpstreamRequestBody(Long taskId, String requestJson) {
+        taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
+                .eq(GenerateTask::getId, taskId)
+                .set(GenerateTask::getUpstreamRequest, requestJson)
+                .set(GenerateTask::getUpdatedAt, LocalDateTime.now()));
     }
 
     private void archiveUpstreamRequest(Long taskId, String requestJson, Long channelId) {

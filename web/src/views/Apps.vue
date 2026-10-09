@@ -1,83 +1,53 @@
 <template>
   <div>
-    <el-button type="primary" @click="createAppVisible = true">新建应用</el-button>
-    <el-alert type="info" :closable="false" style="margin: 10px 0"
-              title="应用 = 一个业务接入方；令牌(SK)挂在应用下，创建时只显示一次。" />
+    <div class="stat-strip">
+      <div class="stat-cell"><div><div class="num">{{ tokens.length }}</div><div class="lbl">令牌总数</div></div></div>
+      <div class="stat-cell"><div><div class="num">{{ tokens.filter(t => t.status === 1).length }}</div><div class="lbl">启用中</div></div></div>
+      <div style="margin-left: auto; align-self: center">
+        <el-button type="primary" round @click="createVisible = true">＋ 发令牌</el-button>
+      </div>
+    </div>
 
-    <el-table :data="apps" size="small" border style="margin-top: 8px">
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="name" label="应用" />
-      <el-table-column prop="contact" label="联系人" />
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <el-tag :type="row.enabled === 1 ? 'success' : 'info'">{{ row.enabled === 1 ? '启用' : '停用' }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="260">
-        <template #default="{ row }">
-          <el-button size="small" type="primary" @click="openTokens(row)">令牌管理</el-button>
-          <el-button size="small" type="danger" v-if="row.enabled === 1" @click="toggleApp(row, 0)">停用</el-button>
-          <el-button size="small" type="success" v-else @click="toggleApp(row, 1)">启用</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <!-- 令牌管理 -->
-    <el-dialog v-model="tokensVisible" :title="`令牌管理 - ${current?.name}`" width="820px">
-      <el-button type="primary" size="small" @click="createTokenVisible = true" style="margin-bottom: 10px">发新令牌</el-button>
-      <el-table :data="tokens" size="small" border>
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="prefix" label="SK 前缀" width="160" />
-        <el-table-column label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '禁用' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="额度" width="160">
-          <template #default="{ row }">{{ row.quotaUsed }} / {{ row.quotaTotal }}</template>
-        </el-table-column>
-        <el-table-column label="授权分组">
-          <template #default="{ row }">{{ row.allowedGroups.length ? row.allowedGroups.join('、') : '全部' }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="130">
-          <template #default="{ row }">
-            <el-button size="small" link @click="toggleToken(row)">{{ row.status === 1 ? '禁用' : '启用' }}</el-button>
-            <el-button size="small" type="danger" link @click="delToken(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-dialog>
-
-    <!-- 新建应用 -->
-    <el-dialog v-model="createAppVisible" title="新建应用" width="440px">
-      <el-form label-width="90px">
-        <el-form-item label="应用名"><el-input v-model="appForm.name" /></el-form-item>
-        <el-form-item label="联系人"><el-input v-model="appForm.contact" /></el-form-item>
-        <el-button type="primary" style="width: 100%" @click="saveApp">保存</el-button>
-      </el-form>
-    </el-dialog>
+    <div class="card-wall">
+      <div v-for="t in tokens" :key="t.id" class="db-card">
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <b style="font-size: 16px">{{ t.name }}</b>
+          <span class="badge" :class="t.status === 1 ? 'green' : 'gray'">{{ t.status === 1 ? '启用' : '禁用' }}</span>
+        </div>
+        <div class="hint" style="margin: 8px 0">
+          SK 前缀 <code>{{ t.prefix }}</code> ·
+          授权分组 {{ t.allowedGroups.length ? t.allowedGroups.join('、') : '全部' }}
+          <span v-if="t.expiresAt"> · 过期于 {{ t.expiresAt }}</span>
+        </div>
+        <div style="display: flex; gap: 6px">
+          <el-button size="small" round type="primary" plain @click="revealSk(t)">查看 SK</el-button>
+          <el-button size="small" round @click="toggleToken(t)">{{ t.status === 1 ? '禁用' : '启用' }}</el-button>
+          <el-button size="small" round type="danger" plain @click="delToken(t)">删除</el-button>
+        </div>
+      </div>
+      <div v-if="!tokens.length" class="db-card" style="text-align: center; color: #9a9a90; padding: 40px">
+        还没有令牌，点右上角「发令牌」
+      </div>
+    </div>
 
     <!-- 发令牌 -->
-    <el-dialog v-model="createTokenVisible" title="发新令牌" width="460px">
-      <el-form label-width="100px">
-        <el-form-item label="令牌名"><el-input v-model="tokenForm.name" /></el-form-item>
-        <el-form-item label="总额度(元)"><el-input-number v-model="tokenForm.quotaTotal" :min="0" :precision="2" />
-          <span style="color:#999;font-size:12px">0 = 不限额</span></el-form-item>
+    <el-dialog v-model="createVisible" title="发令牌" width="440px">
+      <el-form label-width="90px">
+        <el-form-item label="令牌名"><el-input v-model="form.name" placeholder="给谁用的，如 banana-mall" @keyup.enter="save" /></el-form-item>
         <el-form-item label="授权分组">
-          <el-select v-model="tokenForm.allowedGroups" multiple style="width: 100%" placeholder="不选 = 全部分组">
+          <el-select v-model="form.allowedGroups" multiple style="width: 100%" placeholder="不选 = 可调用全部分组">
             <el-option v-for="g in groups" :key="g.id" :value="g.groupCode" :label="g.groupCode" />
           </el-select>
         </el-form-item>
-        <el-button type="primary" style="width: 100%" @click="saveToken">生成 SK</el-button>
+        <el-button type="primary" round style="width: 100%" @click="save">生成 SK</el-button>
       </el-form>
     </el-dialog>
 
-    <!-- SK 只显一次 -->
-    <el-dialog v-model="skVisible" title="⚠️ SK 只显示这一次" width="520px">
+    <!-- SK 查看（创建后 / 随时查看共用） -->
+    <el-dialog v-model="skVisible" :title="skTitle" width="520px">
       <el-input :model-value="newSk" readonly type="textarea" :rows="2" />
-      <div style="margin-top: 10px; display: flex; gap: 10px">
-        <el-button type="primary" @click="copySk">复制</el-button>
-        <span style="color: #e6a23c; align-self: center">关闭后无法再次查看，请立即保存</span>
+      <div style="margin-top: 10px">
+        <el-button type="primary" round @click="copySk">复制</el-button>
       </div>
     </el-dialog>
   </div>
@@ -88,53 +58,42 @@ import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { unwrap } from '../api'
 
-const apps = ref([])
-const groups = ref([])
 const tokens = ref([])
-const current = ref(null)
-const createAppVisible = ref(false)
-const createTokenVisible = ref(false)
-const tokensVisible = ref(false)
+const groups = ref([])
+const createVisible = ref(false)
 const skVisible = ref(false)
+const skTitle = ref('SK')
 const newSk = ref('')
-const appForm = ref({ name: '', contact: '' })
-const tokenForm = ref({ name: '', quotaTotal: 0, allowedGroups: [] })
+const form = ref({ name: '', allowedGroups: [] })
 
 async function load() {
-  apps.value = await unwrap(api.get('/admin/apps'))
+  tokens.value = await unwrap(api.get('/admin/tokens'))
   groups.value = await unwrap(api.get('/admin/groups'))
 }
 
-async function saveApp() {
-  await unwrap(api.post('/admin/apps', appForm.value))
-  ElMessage.success('已创建')
-  createAppVisible.value = false
-  appForm.value = { name: '', contact: '' }
-  await load()
-}
-
-async function toggleApp(row, enabled) {
-  await unwrap(api.post(`/admin/apps/${row.id}/${enabled === 1 ? 'enable' : 'disable'}`))
-  await load()
-}
-
-async function openTokens(row) {
-  current.value = row
-  tokens.value = await unwrap(api.get(`/admin/apps/${row.id}/tokens`))
-  tokensVisible.value = true
-}
-
-async function saveToken() {
-  const body = {
-    name: tokenForm.value.name,
-    quotaTotal: tokenForm.value.quotaTotal > 0 ? tokenForm.value.quotaTotal : null,
-    allowedGroups: tokenForm.value.allowedGroups
+async function save() {
+  if (!form.value.name.trim()) {
+    ElMessage.warning('令牌名不能为空')
+    return
   }
-  const data = await unwrap(api.post(`/admin/apps/${current.value.id}/tokens`, body))
+  const data = await unwrap(api.post('/admin/tokens', form.value))
   newSk.value = data.sk
-  createTokenVisible.value = false
+  skTitle.value = '令牌已创建，SK 加密存储、可随时查看'
+  createVisible.value = false
   skVisible.value = true
-  tokens.value = await unwrap(api.get(`/admin/apps/${current.value.id}/tokens`))
+  form.value = { name: '', allowedGroups: [] }
+  await load()
+}
+
+async function revealSk(t) {
+  try {
+    const data = await unwrap(api.get(`/admin/tokens/${t.id}/sk`))
+    newSk.value = data.sk
+    skTitle.value = `查看 SK - ${t.name}`
+    skVisible.value = true
+  } catch (e) {
+    // 拦截器已提示（旧版本令牌无法找回）
+  }
 }
 
 async function copySk() {
@@ -142,15 +101,15 @@ async function copySk() {
   ElMessage.success('已复制')
 }
 
-async function toggleToken(row) {
-  await unwrap(api.put(`/admin/tokens/${row.id}`, { status: row.status === 1 ? 0 : 1 }))
-  tokens.value = await unwrap(api.get(`/admin/apps/${current.value.id}/tokens`))
+async function toggleToken(t) {
+  await unwrap(api.put(`/admin/tokens/${t.id}`, { status: t.status === 1 ? 0 : 1 }))
+  await load()
 }
 
-async function delToken(row) {
-  await ElMessageBox.confirm('删除后该 SK 立即失效，确认？', '提示', { type: 'warning' })
-  await unwrap(api.delete(`/admin/tokens/${row.id}`))
-  tokens.value = await unwrap(api.get(`/admin/apps/${current.value.id}/tokens`))
+async function delToken(t) {
+  await ElMessageBox.confirm(`删除令牌「${t.name}」后该 SK 立即失效，确认？`, '提示', { type: 'warning' })
+  await unwrap(api.delete(`/admin/tokens/${t.id}`))
+  await load()
 }
 
 onMounted(load)

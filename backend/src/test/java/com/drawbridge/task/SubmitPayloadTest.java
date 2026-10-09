@@ -15,8 +15,8 @@ class SubmitPayloadTest {
     void parseFullPayload() {
         SubmitPayload p = SubmitPayload.parse("""
                 {"model":"image2.5","prompt":"一只猫","n":2,"size":"1024x1024",
-                 "aspectRatio":"3:2","image":"https://a.com/1.png",
-                 "images":["https://b.com/2.png"],
+                 "aspectRatio":"3:2",
+                 "images":["https://a.com/1.png","https://b.com/2.png"],
                  "options":{"output_format":"webp","quality":"high"}}
                 """);
         assertEquals("一只猫", p.prompt());

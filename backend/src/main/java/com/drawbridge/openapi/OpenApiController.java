@@ -2,7 +2,6 @@ package com.drawbridge.openapi;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.drawbridge.billing.BillingService;
 import com.drawbridge.common.ApiResponse;
 import com.drawbridge.common.BizException;
 import com.drawbridge.common.ErrorCode;
@@ -10,10 +9,8 @@ import com.drawbridge.common.Ids;
 import com.drawbridge.common.JsonUtil;
 import com.drawbridge.common.PageResult;
 import com.drawbridge.configprops.DrawbridgeProperties;
-import com.drawbridge.domain.entity.ApiToken;
 import com.drawbridge.domain.entity.GenerateTask;
 import com.drawbridge.domain.entity.ModelGroup;
-import com.drawbridge.domain.mapper.ApiTokenMapper;
 import com.drawbridge.domain.mapper.GenerateTaskMapper;
 import com.drawbridge.domain.mapper.ModelGroupMapper;
 import com.drawbridge.infrastructure.config.ChannelConfigService;
@@ -37,15 +34,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 业务方 API：提交生图任务 / 查询任务 / 模型表 / 余额。
- * 统一任务契约：提交秒回任务号（同步上游会在本请求内等到出图再返回），
- * 异步上游用查询接口轮询。
+ * 业务方 API：提交生图任务 / 查询任务 / 任务列表 / 模型表。
+ * drawbridge 是纯网关：不计价不扣费，提交只做 鉴权 + 模型检查 + 限流。
  */
 @Slf4j
 @RestController
@@ -56,10 +51,8 @@ public class OpenApiController {
     private final ChannelConfigService configService;
     private final SystemConfigService config;
     private final DrawbridgeProperties props;
-    private final BillingService billing;
     private final GenerateTaskMapper taskMapper;
     private final ModelGroupMapper groupMapper;
-    private final ApiTokenMapper tokenMapper;
     private final SubmitExecutor submitExecutor;
     private final MilestoneRegistry milestones;
     private final TokenRateLimiter rateLimiter;
@@ -84,10 +77,10 @@ public class OpenApiController {
         validatePayload(body);
 
         int n = body.n() == null ? 1 : body.n();
-        // 幂等：同 app 同 key 直接返回已有任务
+        // 幂等：同应用同 key 直接返回已有任务
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             GenerateTask existing = taskMapper.selectOne(Wrappers.<GenerateTask>lambdaQuery()
-                    .eq(GenerateTask::getAppId, ctx.app().getId())
+                    .eq(GenerateTask::getTokenId, ctx.token().getId())
                     .eq(GenerateTask::getClientRequestId, idempotencyKey)
                     .last("limit 1"));
             if (existing != null) {
@@ -95,22 +88,15 @@ public class OpenApiController {
             }
         }
 
-        BigDecimal freeze = group.getBizPrice() == null ? BigDecimal.ZERO
-                : group.getBizPrice().multiply(BigDecimal.valueOf(n));
-        if (!billing.freeze(ctx.token().getId(), freeze)) {
-            throw new BizException(ErrorCode.QUOTA_EXCEEDED, "令牌额度不足");
-        }
-
         GenerateTask task = new GenerateTask();
         task.setTaskId(Ids.newTaskId());
-        task.setAppId(ctx.app().getId());
+        
         task.setTokenId(ctx.token().getId());
         task.setGroupCode(groupCode);
         task.setStatus(TaskStatus.SUBMITTED.name());
         task.setImageCount(n);
         task.setBizRequest(JsonUtil.truncateBytes(JsonUtil.toJson(body),
                 config.getInt(ConfigKeys.RETENTION_BODY_MAX_BYTES)));
-        task.setFreezeAmount(freeze);
         task.setClientRequestId(idempotencyKey);
         LocalDateTime now = LocalDateTime.now();
         task.setNextPollTime(now);
@@ -120,10 +106,9 @@ public class OpenApiController {
         try {
             taskMapper.insert(task);
         } catch (DuplicateKeyException e) {
-            // 并发幂等竞争：退回已存在的任务（冻结额立即退回）
-            billing.refund(ctx.token().getId(), freeze);
+            // 并发幂等竞争：退回已存在的任务
             GenerateTask existing = taskMapper.selectOne(Wrappers.<GenerateTask>lambdaQuery()
-                    .eq(GenerateTask::getAppId, ctx.app().getId())
+                    .eq(GenerateTask::getTokenId, ctx.token().getId())
                     .eq(GenerateTask::getClientRequestId, idempotencyKey)
                     .last("limit 1"));
             return ApiResponse.ok(OpenApiDtos.TaskSummary.of(existing));
@@ -146,7 +131,7 @@ public class OpenApiController {
             @PathVariable String taskId) {
         GenerateTask task = taskMapper.selectOne(Wrappers.<GenerateTask>lambdaQuery()
                 .eq(GenerateTask::getTaskId, taskId)
-                .eq(GenerateTask::getAppId, ctx.app().getId()));
+                .eq(GenerateTask::getTokenId, ctx.token().getId()));
         if (task == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "任务不存在");
         }
@@ -160,7 +145,7 @@ public class OpenApiController {
             @RequestParam(defaultValue = "20") long size,
             @RequestParam(required = false) String status) {
         var wrapper = Wrappers.<GenerateTask>lambdaQuery()
-                .eq(GenerateTask::getAppId, ctx.app().getId())
+                .eq(GenerateTask::getTokenId, ctx.token().getId())
                 .orderByDesc(GenerateTask::getId);
         if (status != null && !status.isBlank()) {
             wrapper.eq(GenerateTask::getStatus, status);
@@ -175,30 +160,20 @@ public class OpenApiController {
     public ApiResponse<List<OpenApiDtos.ModelView>> models(
             @RequestAttribute(OpenApiAuthInterceptor.ATTR_AUTH) TokenService.AuthContext ctx) {
         List<OpenApiDtos.ModelView> models = groupMapper.selectList(
-                        Wrappers.<ModelGroup>lambdaQuery()
-                                .eq(ModelGroup::getEnabled, 1))
+                        Wrappers.<ModelGroup>lambdaQuery().eq(ModelGroup::getEnabled, 1))
                 .stream()
                 .filter(g -> ctx.canUse(g.getGroupCode()))
                 .map(g -> new OpenApiDtos.ModelView(g.getGroupCode(),
-                        g.getDisplayName(), g.getBizPrice(), g.getStrategy()))
+                        g.getDisplayName(), g.getStrategy()))
                 .toList();
         return ApiResponse.ok(models);
     }
 
-    @GetMapping("/balance")
-    public ApiResponse<OpenApiDtos.BalanceView> balance(
-            @RequestAttribute(OpenApiAuthInterceptor.ATTR_AUTH) TokenService.AuthContext ctx) {
-        ApiToken token = tokenMapper.selectById(ctx.token().getId());
-        return ApiResponse.ok(new OpenApiDtos.BalanceView(
-                token.getQuotaTotal(), token.getQuotaUsed(), "元"));
-    }
-
     private void validatePayload(OpenApiDtos.ImageSubmitRequest body) {
         boolean hasPrompt = body.prompt() != null && !body.prompt().isBlank();
-        boolean hasImage = (body.image() != null && !body.image().isBlank())
-                || (body.images() != null && !body.images().isEmpty());
+        boolean hasImage = body.images() != null && !body.images().isEmpty();
         if (!hasPrompt && !hasImage) {
-            throw new BizException(ErrorCode.PARAM_INVALID, "prompt 与 image 至少提供一个");
+            throw new BizException(ErrorCode.PARAM_INVALID, "prompt 与 images 至少提供一个");
         }
         if (body.prompt() != null && body.prompt().length() > 4000) {
             throw new BizException(ErrorCode.PARAM_INVALID, "prompt 超过 4000 字符");
@@ -206,7 +181,6 @@ public class OpenApiController {
         if (body.n() != null && (body.n() < 1 || body.n() > 6)) {
             throw new BizException(ErrorCode.PARAM_INVALID, "n 取值 1-6");
         }
-        checkUrl(body.image());
         if (body.images() != null) {
             if (body.images().size() > 4) {
                 throw new BizException(ErrorCode.PARAM_INVALID, "参考图最多 4 张");

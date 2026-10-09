@@ -1,0 +1,166 @@
+/* drawbridge 控制台全局主题：奶油底 + 绿色主色 + 圆角卡片 + 浮动侧栏 */
+:root {
+  --el-color-primary: #4a7c59;
+  --el-color-primary-light-3: #6f9a7d;
+  --el-color-primary-light-5: #93b7a0;
+  --el-color-primary-light-7: #c2d6c8;
+  --el-color-primary-light-8: #d8e4db;
+  --el-color-primary-light-9: #ecf2ee;
+  --el-color-primary-dark-2: #3b6347;
+  --el-border-radius-base: 10px;
+  --el-font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #f2f0ea;
+  color: #2f2f2b;
+  font-family: var(--el-font-family);
+}
+
+/* 页面标题区 */
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 4px 4px 18px;
+}
+.page-head h1 { font-size: 26px; margin: 0; letter-spacing: 1px; }
+.page-head .sub { color: #8b8b82; font-size: 13px; margin-top: 6px; }
+
+/* 卡片墙 */
+.card-wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+.db-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: 0 1px 3px rgba(60, 60, 50, 0.06);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.db-card:hover { box-shadow: 0 6px 18px rgba(60, 60, 50, 0.1); }
+
+/* 统计条 */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(60, 60, 50, 0.06);
+}
+.stat-cell { display: flex; gap: 10px; align-items: center; }
+.stat-cell .num { font-size: 22px; font-weight: 700; }
+.stat-cell .lbl { color: #8b8b82; font-size: 12px; }
+
+/* 策略 chips */
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid #e4e2d8;
+  background: #faf9f5;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  color: #6d6d64;
+  transition: all 0.15s;
+}
+.chip:hover { border-color: #4a7c59; color: #4a7c59; }
+.chip.active {
+  background: #4a7c59;
+  border-color: #4a7c59;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 成员条目 */
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #eeede6;
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: #fcfbf8;
+}
+.member-row .no {
+  width: 22px; height: 22px;
+  border-radius: 7px;
+  background: #ecf2ee;
+  color: #4a7c59;
+  font-weight: 700;
+  font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.member-row .m-main { flex: 1; min-width: 0; }
+.member-row .m-main b { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-row .m-main small { color: #9a9a90; font-size: 11px; }
+.member-row .m-ops { display: flex; gap: 2px; flex-shrink: 0; }
+
+/* 状态徽章 */
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.badge.green { background: #e5f0e8; color: #3f6f4e; }
+.badge.red { background: #f9e5e1; color: #b4523f; }
+.badge.orange { background: #f7ecd9; color: #a4712a; }
+.badge.gray { background: #ededea; color: #7c7c74; }
+
+/* 表格微调 */
+.el-table { --el-table-border-color: #eeede6; }
+.el-table th.el-table__cell { background: #faf9f5 !important; }
+
+/* 协议选择卡片 */
+.proto-card {
+  border: 2px solid #eeede6;
+  border-radius: 14px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: #fff;
+}
+.proto-card:hover { border-color: #93b7a0; }
+.proto-card.active { border-color: #4a7c59; background: #f4f8f5; }
+.proto-card b { display: block; margin-bottom: 4px; }
+.proto-card small { color: #8b8b82; line-height: 1.5; display: block; }
+
+/* 抽屉/对话框表单 */
+.el-drawer__body, .el-dialog__body { padding-top: 10px; }
+.hint { color: #9a9a90; font-size: 12px; line-height: 1.6; }
+
+/* ===== 全局过渡动画 ===== */
+/* 路由切换 */
+.page-enter-active, .page-leave-active { transition: opacity 0.18s ease, transform 0.18s ease; }
+.page-enter-from { opacity: 0; transform: translateY(8px); }
+.page-leave-to { opacity: 0; transform: translateY(-6px); }
+
+/* 卡片/统计条/成员行通用过渡 */
+.db-card, .stat-strip, .member-row, .chip, .proto-card, .side-item {
+  transition: box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease,
+              border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+.db-card:hover { transform: translateY(-2px); }
+
+/* 按钮/输入焦点柔和过渡 */
+.el-button { transition: all 0.18s ease; }
+.el-input__wrapper, .el-select__wrapper, .el-textarea__inner { transition: box-shadow 0.18s ease; }
+
+/* 弹层出入更顺滑 */
+.el-dialog, .el-drawer { transition-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1); }
+.el-overlay { transition: opacity 0.2s ease; }
+
+/* 成员行拖拽把手提示 */
+[draggable="true"] { -webkit-user-drag: element; }

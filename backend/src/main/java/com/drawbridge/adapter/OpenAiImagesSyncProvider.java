@@ -4,7 +4,6 @@ import com.drawbridge.common.JsonUtil;
 import com.drawbridge.infrastructure.config.ChannelConfigService;
 import com.drawbridge.infrastructure.http.UpstreamHttp;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Component;
 
@@ -16,14 +15,16 @@ import java.util.Set;
 /**
  * 协议族①：OpenAI Images 同步（apiyi / laozhang / uuapi / nezhagate 的同步生图模型）。
  * POST {base}/images/generations → 2xx 直接返回 data[].url 或 data[].b64_json。
- * 路径可由渠道 path_overrides.submitPath 覆盖。
+ * 图生图：默认把参考图 URL 放 body.image 直传；渠道 extra_config.refImageStyle=uuapi 时
+ * 切到 POST {base}/images/edits、参考图用 images[].image_url 包裹（uuapi 的图生图契约）。
+ * 提交路径可由渠道 path_overrides.submitPath 覆盖（覆盖后不再按参考图自动切换）。
  */
 @Component
 public class OpenAiImagesSyncProvider implements ImageProvider {
 
-    /** options 里不允许直接覆盖的保留键。 */
+    /** options 里不允许直接覆盖的保留键。response_format 放行：业务方可要求上游回 url 而非 b64。 */
     private static final Set<String> RESERVED = Set.of(
-            "model", "prompt", "n", "size", "image", "images", "response_format", "modelVariant");
+            "model", "prompt", "n", "size", "image", "images", "modelVariant");
 
     private final UpstreamHttp http;
 
@@ -40,7 +41,7 @@ public class OpenAiImagesSyncProvider implements ImageProvider {
     public SubmitOutcome submit(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
         String body = buildRequestJson(cmd, rt);
         String url = Pointer.joinUrl(rt.baseUrl(),
-                rt.pathOverrides().getOrDefault("submitPath", "/images/generations"));
+                rt.pathOverrides().getOrDefault("submitPath", defaultSubmitPath(cmd, rt)));
         UpstreamHttp.HttpResult result = http.postJson(url, authHeaders(rt), body, cmd.timeoutMs());
         JsonNode node = UpstreamHttp.parseBody(result.status(), result.body());
         if (result.status() < 200 || result.status() >= 300) {
@@ -86,14 +87,7 @@ public class OpenAiImagesSyncProvider implements ImageProvider {
         if (cmd.size() != null && !cmd.size().isBlank()) {
             body.put("size", cmd.size());
         }
-        if (cmd.imageUrls() != null && !cmd.imageUrls().isEmpty()) {
-            if (cmd.imageUrls().size() == 1) {
-                body.put("image", cmd.imageUrls().getFirst());
-            } else {
-                ArrayNode arr = body.putArray("image");
-                cmd.imageUrls().forEach(arr::add);
-            }
-        }
+        RefImages.applyTo(body, cmd.imageUrls(), RefImages.uuapiEdits(rt, cmd.imageUrls()));
         if (cmd.options() != null) {
             for (Map.Entry<String, Object> e : cmd.options().entrySet()) {
                 if (!RESERVED.contains(e.getKey()) && e.getValue() != null) {
@@ -101,11 +95,21 @@ public class OpenAiImagesSyncProvider implements ImageProvider {
                 }
             }
         }
+        // 渠道级默认响应格式：业务方未显式指定时代为注入（显式传入优先）
+        if (!body.has("response_format")
+                && rt.extra().get("defaultResponseFormat") instanceof String fmt && !fmt.isBlank()) {
+            body.put("response_format", fmt);
+        }
         return body.toString();
     }
 
     private Map<String, String> authHeaders(ChannelConfigService.ChannelRuntime rt) {
         return Map.of("Authorization", "Bearer " + rt.apiKey());
+    }
+
+    /** 默认提交路径：显式 submitPath 覆盖优先级最高（在 submit 里处理），这里只管模板默认。 */
+    private String defaultSubmitPath(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
+        return RefImages.uuapiEdits(rt, cmd.imageUrls()) ? "/images/edits" : "/images/generations";
     }
 
     /** b64 → data URI，业务方可直接用于 <img>；格式取 options.output_format，默认 png。 */

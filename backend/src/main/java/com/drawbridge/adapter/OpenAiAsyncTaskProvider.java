@@ -4,8 +4,8 @@ import com.drawbridge.common.JsonUtil;
 import com.drawbridge.infrastructure.config.ChannelConfigService;
 import com.drawbridge.infrastructure.http.UpstreamHttp;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -20,6 +20,7 @@ import java.util.Set;
  * 字段位置与状态映射内置两套默认（flavor=nezha/uu），渠道 extra_config 可逐项覆盖：
  * submitPath / queryPath / idField / statusField / urlField / statusMap。
  */
+@Slf4j
 @Component
 public class OpenAiAsyncTaskProvider implements ImageProvider {
 
@@ -40,7 +41,7 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
     @Override
     public SubmitOutcome submit(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
         String body = buildRequestJson(cmd, rt);
-        String url = Pointer.joinUrl(rt.baseUrl(), path(rt, "submitPath"));
+        String url = Pointer.joinUrl(rt.baseUrl(), submitPath(cmd, rt));
         UpstreamHttp.HttpResult result = http.postJson(url, authHeaders(rt), body, cmd.timeoutMs());
         JsonNode node = UpstreamHttp.parseBody(result.status(), result.body());
         if (result.status() >= 500) {
@@ -56,6 +57,15 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
                 field(rt, "idField"),
                 "task_id", "id");
         if (taskId == null) {
+            // 防御自愈：没拿到任务号，但响应是同步生图形状（data[].url / b64_json）——
+            // 多半是异步适配器被指到了同步端点（渠道协议配错）。图已付费生成，收下而不是丢弃。
+            List<String> syncUrls = collectSyncImageResults(node);
+            if (!syncUrls.isEmpty()) {
+                log.warn("异步上游未返回任务号但返回了同步生图结果，已按同步完成收下"
+                        + "（渠道协议可能配错，请检查）: base={}", rt.baseUrl());
+                boolean inline = syncUrls.stream().anyMatch(u -> u.startsWith("data:"));
+                return new SubmitOutcome.Completed(syncUrls, inline, result.body(), null);
+            }
             throw new UpstreamCallException(UpstreamErrorKind.UNKNOWN,
                     "异步上游受理但未解析到任务号（HTTP " + result.status() + "）", result.status());
         }
@@ -99,14 +109,7 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
         if (cmd.size() != null && !cmd.size().isBlank()) {
             body.put("size", cmd.size());
         }
-        if (cmd.imageUrls() != null && !cmd.imageUrls().isEmpty()) {
-            if (cmd.imageUrls().size() == 1) {
-                body.put("image", cmd.imageUrls().getFirst());
-            } else {
-                ArrayNode arr = body.putArray("image");
-                cmd.imageUrls().forEach(arr::add);
-            }
-        }
+        RefImages.applyTo(body, cmd.imageUrls(), RefImages.uuapiEdits(rt, cmd.imageUrls()));
         if (cmd.options() != null) {
             for (Map.Entry<String, Object> e : cmd.options().entrySet()) {
                 if (!RESERVED.contains(e.getKey()) && e.getValue() != null) {
@@ -160,6 +163,19 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
         return urls;
     }
 
+    /** 识别同步生图形状的响应（data[].url 或 data[].b64_json）；b64 按 png 转 data URI。 */
+    private List<String> collectSyncImageResults(JsonNode node) {
+        List<String> urls = new ArrayList<>();
+        for (JsonNode item : node.path("data")) {
+            if (item.hasNonNull("url") && !item.path("url").asText().isBlank()) {
+                urls.add(item.get("url").asText());
+            } else if (item.hasNonNull("b64_json") && !item.path("b64_json").asText().isBlank()) {
+                urls.add("data:image/png;base64," + item.get("b64_json").asText());
+            }
+        }
+        return urls;
+    }
+
     private String failMessage(JsonNode node) {
         for (String p : new String[]{"error.message", "error", "message", "fail_message"}) {
             String t = Pointer.text(node, p);
@@ -184,8 +200,16 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
         return Map.of("Authorization", "Bearer " + rt.apiKey());
     }
 
-    private String path(ChannelConfigService.ChannelRuntime rt, String name) {
-        return field(rt, name);
+    /** 提交路径：显式覆盖（pathOverrides 优先，extra 次之）；UUAPI 参考图风格带图时走 /images/edits/async。 */
+    private String submitPath(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
+        String override = rt.pathOverrides().get("submitPath");
+        if (override != null && !override.isBlank()) {
+            return override;
+        }
+        if (RefImages.uuapiEdits(rt, cmd.imageUrls())) {
+            return "/images/edits/async";
+        }
+        return field(rt, "submitPath");
     }
 
     private String normalize(String s) {

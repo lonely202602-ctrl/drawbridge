@@ -19,13 +19,14 @@ public class ApiToken {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private Long appId;
-
     private String name;
 
     private String skHash;
 
     private String skPrefix;
+
+    /** AES 加密的完整 SK（支持事后查看）；旧版本令牌为空 */
+    private String skEnc;
 
     private Integer status;
 

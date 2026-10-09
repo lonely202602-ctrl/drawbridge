@@ -29,7 +29,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.math.BigDecimal;
 import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -63,24 +62,35 @@ public class ChannelAdminController {
             Map<String, String> pathOverrides,
             Map<String, Object> extraConfig,
             Integer maxConcurrency,
-            BigDecimal costPrice,
             String remark) {
     }
 
-    public record ChannelView(Channel channel, boolean keyConfigured, int healthState, boolean cooling) {
-    }
-
+    /** 扁平结构返回（前端直接读顶层字段），密钥永不外传。 */
     @GetMapping
-    public ApiResponse<List<ChannelView>> list() {
-        List<ChannelView> views = channelMapper.selectList(
+    public ApiResponse<List<Map<String, Object>>> list() {
+        List<Map<String, Object>> rows = channelMapper.selectList(
                         Wrappers.<Channel>lambdaQuery().orderByDesc(Channel::getId))
                 .stream()
-                .map(c -> new ChannelView(mask(c),
-                        c.getApiKeyEnc() != null && !c.getApiKeyEnc().isBlank(),
-                        healthTracker.healthState(c.getId()),
-                        cooldownRegistry.isCooling(c.getId())))
+                .map(c -> {
+                    Map<String, Object> m = new java.util.HashMap<>();
+                    m.put("id", c.getId());
+                    m.put("name", c.getName());
+                    m.put("protocol", c.getProtocol());
+                    m.put("baseUrl", c.getBaseUrl());
+                    m.put("pathOverrides", c.getPathOverrides());
+                    m.put("extraConfig", c.getExtraConfig());
+                    m.put("maxConcurrency", c.getMaxConcurrency());
+                    m.put("enabled", c.getEnabled());
+                    m.put("status", c.getStatus());
+                    m.put("statusReason", c.getStatusReason() == null ? "" : c.getStatusReason());
+                    m.put("remark", c.getRemark());
+                    m.put("keyConfigured", c.getApiKeyEnc() != null && !c.getApiKeyEnc().isBlank());
+                    m.put("health", healthTracker.healthState(c.getId()));
+                    m.put("cooling", cooldownRegistry.isCooling(c.getId()));
+                    return m;
+                })
                 .toList();
-        return ApiResponse.ok(views);
+        return ApiResponse.ok(rows);
     }
 
     @PostMapping
@@ -130,6 +140,24 @@ public class ChannelAdminController {
                                      @RequestBody(required = false) Map<String, String> body) {
         channelOps.disable(id, body == null ? "手动停用" : body.getOrDefault("reason", "手动停用"));
         return ApiResponse.ok();
+    }
+
+    public record ProbeRequest(@NotBlank String protocol, @NotBlank String baseUrl, @NotBlank String apiKey) {
+    }
+
+    /** 试跑（未保存的渠道也可用）：真实调一次上游验证连通与 Key。 */
+    @PostMapping("/probe")
+    public ApiResponse<Map<String, String>> probeUnsaved(@Validated @RequestBody ProbeRequest body) {
+        validateProtocol(body.protocol());
+        Channel temp = new Channel();
+        temp.setName("__probe__");
+        temp.setProtocol(body.protocol());
+        temp.setBaseUrl(body.baseUrl().replaceAll("/+$", ""));
+        temp.setApiKeyEnc(cipher.encrypt(body.apiKey()));
+        temp.setMaxConcurrency(1);
+        temp.setEnabled(1);
+        temp.setStatus(ChannelHealthTracker.NORMAL);
+        return ApiResponse.ok(Map.of("result", probe(temp)));
     }
 
     /** 试跑：真实调一次上游验证连通与 Key。 */
@@ -219,6 +247,80 @@ public class ChannelAdminController {
         return ApiResponse.ok(m.getId());
     }
 
+    public record ModelImportRequest(@NotBlank String content) {
+    }
+
+    /** 批量导入模型：支持每行一个 / Markdown 列表（含链接） / JSON 字符串数组。 */
+    @PostMapping("/{id}/models/import")
+    public ApiResponse<Map<String, Integer>> importModels(@PathVariable Long id,
+                                                          @Validated @RequestBody ModelImportRequest body) {
+        mustGet(id);
+        List<String> models = parseModelList(body.content());
+        if (models.isEmpty()) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "未解析到任何模型名");
+        }
+        if (models.size() > 200) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "单次最多导入 200 个模型");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int added = 0;
+        for (String code : models) {
+            UpstreamModel existing = upstreamModelMapper.selectOne(Wrappers.<UpstreamModel>lambdaQuery()
+                    .eq(UpstreamModel::getChannelId, id)
+                    .eq(UpstreamModel::getModelCode, code));
+            if (existing == null) {
+                UpstreamModel m = new UpstreamModel();
+                m.setChannelId(id);
+                m.setModelCode(code);
+                m.setSource(2);
+                m.setEnabled(1);
+                m.setCreatedAt(now);
+                m.setUpdatedAt(now);
+                upstreamModelMapper.insert(m);
+                added++;
+            } else if (existing.getEnabled() == null || existing.getEnabled() != 1) {
+                existing.setEnabled(1);
+                existing.setUpdatedAt(now);
+                upstreamModelMapper.updateById(existing);
+                added++;
+            }
+        }
+        return ApiResponse.ok(Map.of("total", models.size(), "added", added));
+    }
+
+    /** 解析模型清单：JSON 数组 / 每行一个（容忍 Markdown 列表符、序号、链接）。 */
+    static List<String> parseModelList(String content) {
+        String t = content == null ? "" : content.trim();
+        List<String> result = new ArrayList<>();
+        if (t.startsWith("[")) {
+            com.fasterxml.jackson.databind.JsonNode arr = com.drawbridge.common.JsonUtil.readTree(t);
+            if (arr.isArray()) {
+                arr.forEach(n -> {
+                    if (n.isTextual() && !n.asText().isBlank()) {
+                        result.add(n.asText().trim());
+                    }
+                });
+            }
+            return result.stream().distinct().toList();
+        }
+        for (String line : t.split("\r?\n")) {
+            String s = line.trim();
+            if (s.isEmpty() || s.startsWith("#") || s.startsWith("<")) {
+                continue;
+            }
+            s = s.replaceAll("^[-*+]\\s+", "");
+            s = s.replaceAll("^\\d+[.)]\\s*", "");
+            if (s.startsWith("[") && s.contains("](")) {
+                s = s.substring(1, s.indexOf("]("));
+            }
+            s = s.trim();
+            if (!s.isEmpty() && s.matches("[\\w./:@+-]+")) {
+                result.add(s);
+            }
+        }
+        return result.stream().distinct().toList();
+    }
+
     @DeleteMapping("/{id}/models/{modelId}")
     public ApiResponse<Void> deleteModel(@PathVariable Long id, @PathVariable Long modelId) {
         upstreamModelMapper.delete(Wrappers.<UpstreamModel>lambdaQuery()
@@ -238,7 +340,6 @@ public class ChannelAdminController {
         channel.setExtraConfig(body.extraConfig() == null || body.extraConfig().isEmpty()
                 ? null : com.drawbridge.common.JsonUtil.toJson(body.extraConfig()));
         channel.setMaxConcurrency(body.maxConcurrency());
-        channel.setCostPrice(body.costPrice());
         channel.setRemark(body.remark());
     }
 
@@ -248,14 +349,6 @@ public class ChannelAdminController {
             throw new BizException(ErrorCode.NOT_FOUND, "渠道不存在");
         }
         return channel;
-    }
-
-    /** 渠道脱敏视图（不回传密钥密文）。 */
-    private Channel mask(Channel c) {
-        Channel copy = new Channel();
-        org.springframework.beans.BeanUtils.copyProperties(c, copy);
-        copy.setApiKeyEnc(null);
-        return copy;
     }
 
     private void validateProtocol(String protocol) {
@@ -287,6 +380,10 @@ public class ChannelAdminController {
             }
             if (result.status() == 401 || result.status() == 403) {
                 return "可达，但 Key 无效或无权限（HTTP " + result.status() + "）";
+            }
+            if (family == ProtocolFamily.CRUN_TASK && result.status() >= 400 && result.status() < 500) {
+                // Crun 先鉴权后验参数（实测：无 Key/假 Key 都是 401），探活任务号不存在回 4xx 属预期
+                return "连通正常，Key 有效（探活任务号不存在 HTTP " + result.status() + "，属预期）";
             }
             return "返回异常（HTTP " + result.status() + "），请检查 base_url";
         } catch (BizException e) {

@@ -20,6 +20,10 @@ public enum UpstreamErrorKind {
     BALANCE_EXHAUSTED(true, ChannelAction.AUTO_DISABLE, "UPSTREAM_ALL_FAILED"),
     /** 上游 Key 失效/被封：换渠道重试，本渠道自动停用并告警 */
     AUTH_FAILED(true, ChannelAction.AUTO_DISABLE, "UPSTREAM_ALL_FAILED"),
+    /** Key 有效但无权访问该模型（模型级权限，渠道其它模型正常）：换渠道重试，不停用渠道 */
+    MODEL_NOT_PERMITTED(true, ChannelAction.NONE, "UPSTREAM_MODEL_NOT_PERMITTED"),
+    /** 渠道当前没有可服务此模型的账号/容量（如 new-api 系 404「无可用渠道」）：换渠道重试，不停用渠道 */
+    MODEL_UNAVAILABLE(true, ChannelAction.NONE, "UPSTREAM_MODEL_UNAVAILABLE"),
     /** 提示词/内容审核拦截：不重试，作为任务结果返回业务方 */
     CONTENT_REJECTED(false, ChannelAction.NONE, "CONTENT_REJECTED"),
     /** 参数/模型/尺寸上游不支持：不重试，作为任务结果返回业务方 */

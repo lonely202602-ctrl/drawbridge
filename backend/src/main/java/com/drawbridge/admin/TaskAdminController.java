@@ -20,6 +20,8 @@ import com.drawbridge.health.ConcurrencyGuard;
 import com.drawbridge.infrastructure.config.ChannelConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+
+import java.util.Set;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -30,6 +32,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 管理端-任务与监控：任务列表/详情（重试时间线 + 双向请求体 + 结果）、仪表盘。
@@ -38,6 +41,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 @RequestMapping("/admin")
 public class TaskAdminController {
+
+    /** 列表翻页不捞大字段：请求体存档与结果（b64 内联图单张 1~2MB），详情页再单独取。 */
+    private static final Set<String> BIG_COLUMNS = Set.of("biz_request", "upstream_request", "result");
 
     private final GenerateTaskMapper taskMapper;
     private final TaskAttemptMapper attemptMapper;
@@ -66,7 +72,8 @@ public class TaskAdminController {
         if (taskId != null && !taskId.isBlank()) {
             wrapper.like(GenerateTask::getTaskId, taskId);
         }
-        Page<GenerateTask> result = taskMapper.selectPage(new Page<>(page, Math.min(size, 100)), wrapper);
+        Page<GenerateTask> result = taskMapper.selectPage(new Page<>(page, Math.min(size, 100)),
+                wrapper.select(GenerateTask.class, f -> !BIG_COLUMNS.contains(f.getColumn())));
         Map<Long, String> channelNames = channelNames();
         List<Map<String, Object>> records = result.getRecords().stream()
                 .map(t -> {
@@ -83,7 +90,6 @@ public class TaskAdminController {
                     row.put("upstreamTaskId", t.getUpstreamTaskId());
                     row.put("attemptCount", t.getAttemptCount());
                     row.put("pollCount", t.getPollCount());
-                    row.put("freezeAmount", t.getFreezeAmount());
                     row.put("createdAt", t.getCreatedAt());
                     row.put("finishTime", t.getFinishTime());
                     return row;

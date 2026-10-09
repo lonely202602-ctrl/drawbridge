@@ -1,16 +1,14 @@
 package com.drawbridge.integration;
 
-import com.drawbridge.domain.entity.ApiToken;
-import com.drawbridge.domain.entity.App;
 import com.drawbridge.domain.entity.Channel;
 import com.drawbridge.domain.entity.GenerateTask;
 import com.drawbridge.domain.entity.GroupMember;
 import com.drawbridge.domain.entity.ModelGroup;
 import com.drawbridge.domain.entity.TaskAttempt;
 import com.drawbridge.domain.entity.UsageLog;
-import com.drawbridge.domain.mapper.ApiTokenMapper;
-import com.drawbridge.domain.mapper.AppMapper;
 import com.drawbridge.domain.mapper.ChannelMapper;
+import com.drawbridge.domain.entity.ApiToken;
+import com.drawbridge.domain.mapper.ApiTokenMapper;
 import com.drawbridge.domain.mapper.GenerateTaskMapper;
 import com.drawbridge.domain.mapper.GroupMemberMapper;
 import com.drawbridge.domain.mapper.ModelGroupMapper;
@@ -97,8 +95,6 @@ class GatewayIntegrationTest {
     @Autowired
     GroupMemberMapper memberMapper;
     @Autowired
-    AppMapper appMapper;
-    @Autowired
     ApiTokenMapper tokenMapper;
     @Autowired
     GenerateTaskMapper taskMapper;
@@ -141,7 +137,6 @@ class GatewayIntegrationTest {
         jdbc.update("DELETE FROM model_group");
         jdbc.update("DELETE FROM upstream_model");
         jdbc.update("DELETE FROM api_token");
-        jdbc.update("DELETE FROM app");
         jdbc.update("DELETE FROM channel");
         configService.refresh();
         WM.resetAll();
@@ -199,21 +194,12 @@ class GatewayIntegrationTest {
     }
 
     private String seedToken(long appId, String sk, String quota, List<String> allowedGroups) {
-        App app = new App();
-        app.setName("测试应用-" + appId);
-        app.setEnabled(1);
-        LocalDateTime now = LocalDateTime.now();
-        app.setCreatedAt(now);
-        app.setUpdatedAt(now);
-        appMapper.insert(app);
         ApiToken t = new ApiToken();
-        t.setAppId(app.getId());
         t.setName("测试令牌");
+        LocalDateTime now = LocalDateTime.now();
         t.setSkHash(com.drawbridge.common.Ids.sha256Hex(sk));
         t.setSkPrefix(sk.substring(0, 10));
         t.setStatus(1);
-        t.setQuotaTotal(quota == null ? null : new BigDecimal(quota));
-        t.setQuotaUsed(BigDecimal.ZERO);
         t.setAllowedGroups(allowedGroups == null ? null
                 : com.drawbridge.common.JsonUtil.toJson(allowedGroups));
         t.setCreatedAt(now);
@@ -291,13 +277,10 @@ class GatewayIntegrationTest {
 
         GenerateTask task = taskMapper.selectList(null).getFirst();
         assertEquals("SUCCEEDED", task.getStatus());
-        assertEquals(0, new BigDecimal("0.02").compareTo(task.getSettleAmount()));
         assertNotNull(task.getUpstreamRequest());          // 封装请求体已存档
-        // 计量：成功流水（等其落地）+ 额度扣减
+        // 用量流水（等其落地）
         Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
                 assertEquals(1, usageLogMapper.selectCount(null)));
-        assertEquals(0, new BigDecimal("0.02").compareTo(
-                tokenMapper.selectById(task.getTokenId()).getQuotaUsed()));
     }
 
     @org.junit.jupiter.api.DisplayName("异步上游：提交秒回 → 轮询推进 → 成功结算")
@@ -430,9 +413,9 @@ class GatewayIntegrationTest {
                 com.baomidou.mybatisplus.core.toolkit.Wrappers.<TaskAttempt>lambdaQuery()
                         .eq(TaskAttempt::getTaskId, task.getId()));
         assertEquals(1, attempts.size());
-        // 退款
-        assertEquals(0, BigDecimal.ZERO.compareTo(
-                tokenMapper.selectById(task.getTokenId()).getQuotaUsed()));
+        // 失败也留用量流水（成功=0）
+        assertEquals(1, usageLogMapper.selectList(null).stream()
+                .filter(u -> u.getSuccess() == 0).count());
     }
 
     @org.junit.jupiter.api.DisplayName("全部渠道失败：UPSTREAM_ALL_FAILED + 退款")
@@ -452,8 +435,7 @@ class GatewayIntegrationTest {
 
         GenerateTask task = taskMapper.selectList(null).getFirst();
         assertEquals(2, task.getAttemptCount());
-        assertEquals(0, BigDecimal.ZERO.compareTo(
-                tokenMapper.selectById(task.getTokenId()).getQuotaUsed()));
+        assertEquals(1, usageLogMapper.selectCount(null));
     }
 
     @org.junit.jupiter.api.DisplayName("异步任务在上游侧失败：轮询发现 → 任务失败 + 退款（不重发）")
@@ -475,10 +457,8 @@ class GatewayIntegrationTest {
         assertEquals("FAILED", task.getStatus());
         assertEquals("UPSTREAM_TASK_FAILED", task.getErrorCode());
         assertEquals("渲染超时", task.getErrorMsg());
-        System.out.println("[debug] freeze=" + task.getFreezeAmount()
-                + " quotaUsed=" + tokenMapper.selectById(task.getTokenId()).getQuotaUsed());
-        assertEquals(0, BigDecimal.ZERO.compareTo(
-                tokenMapper.selectById(task.getTokenId()).getQuotaUsed()));
+        Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertEquals(1, usageLogMapper.selectCount(null)));
     }
 
     @org.junit.jupiter.api.DisplayName("Crun 全链路：CreateTask → TaskInfo → 成功，credits 记成本")
@@ -507,12 +487,9 @@ class GatewayIntegrationTest {
 
         GenerateTask task = awaitTerminal(taskId);
         assertEquals("SUCCEEDED", task.getStatus());
-        // 用量流水在终态后毫秒级落地，等待其出现
         Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
                 assertEquals(1, usageLogMapper.selectCount(null)));
-        UsageLog usage = usageLogMapper.selectList(null).getFirst();
-        assertEquals(0, new BigDecimal(12).compareTo(usage.getCostAmount()));
-        assertEquals(0, new BigDecimal("0.05").compareTo(usage.getBizAmount()));
+        assertEquals(1, usageLogMapper.selectList(null).getFirst().getSuccess());
     }
 
     // ------------------------------------------------------------------ 入口校验
@@ -523,8 +500,7 @@ class GatewayIntegrationTest {
         Channel ch = seedChannel("同步", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
         seedGroup("image2.5", "0.02", List.of(ch), List.of("m"));
         seedGroup("vip.model", "0.10", List.of(ch), List.of("m"));
-        String sk = seedToken(1L, "sk-guard-aaaaaaa", "10.00", List.of("image2.5"));
-        String sk2 = seedToken(2L, "sk-guard-bbbbbbb", "0.03", List.of("image2.5"));
+        String sk = seedToken(1L, "sk-guard-aaaaaaa", null, List.of("image2.5"));
         refreshSnapshot();
         WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
                 .willReturn(aResponse().withStatus(200)
@@ -550,12 +526,6 @@ class GatewayIntegrationTest {
                         .header("Content-Type", "application/json")
                         .content("{\"model\":\"nope\",\"prompt\":\"x\"}"))
                 .andExpect(status().isBadRequest());
-
-        // 额度不足（0.03 只够 1 张 0.02，n=2 需 0.04）
-        mvc.perform(post("/v1/images/tasks").header("Authorization", "Bearer " + sk2)
-                        .header("Content-Type", "application/json")
-                        .content("{\"model\":\"image2.5\",\"prompt\":\"x\",\"n\":2}"))
-                .andExpect(status().isPaymentRequired());
 
         // 参数校验：prompt 和 image 都没有
         mvc.perform(post("/v1/images/tasks").header("Authorization", "Bearer " + sk)
@@ -585,13 +555,10 @@ class GatewayIntegrationTest {
         var id3 = field(r3.getResponse().getContentAsString(), "taskId");
         assertTrue(!id1.equals(id3));
 
-        // 模型表 / 余额接口（r1 + r2 两单，每单 0.02）
+        // 模型表
         mvc.perform(get("/v1/images/models").header("Authorization", "Bearer " + sk))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].model").value("image2.5"));
-        mvc.perform(get("/v1/balance").header("Authorization", "Bearer " + sk))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.quotaUsed").value(0.04));
     }
 
     // ------------------------------------------------------------------ 管理端运营闭环
@@ -646,9 +613,9 @@ class GatewayIntegrationTest {
                 .andExpect(status().isOk());
 
         // 发令牌（SK 只显一次）
-        String tokenResp = mvc.perform(post("/admin/apps/" + seedAppId() + "/tokens")
+        String tokenResp = mvc.perform(post("/admin/tokens")
                         .header("X-Admin-Token", admin).header("Content-Type", "application/json")
-                        .content("{\"name\":\"默认令牌\",\"quotaTotal\":5.00}"))
+                        .content("{\"name\":\"默认令牌\",\"allowedGroups\":[]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String sk = com.drawbridge.common.JsonUtil.readTree(tokenResp).path("data").path("sk").asText();
         assertTrue(sk.startsWith("sk-"));
@@ -681,14 +648,150 @@ class GatewayIntegrationTest {
                 .andExpect(jsonPath("$.data['route.max_channel_attempts']").value("2"));
     }
 
-    private long seedAppId() {
-        App app = new App();
-        app.setName("管理端流程应用");
-        app.setEnabled(1);
-        LocalDateTime now = LocalDateTime.now();
-        app.setCreatedAt(now);
-        app.setUpdatedAt(now);
-        appMapper.insert(app);
-        return app.getId();
+    @org.junit.jupiter.api.DisplayName("分组编码改名：新编码可调用 / 重名拒绝 / 令牌 allowed_groups 级联同步")
+    @Test
+    void groupRenameCascadesTokenAllowedGroups() throws Exception {
+        String admin = adminToken();
+        Channel ch = seedChannel("改名上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
+        ModelGroup g = seedGroup("old.model", "0.02", List.of(ch), List.of("m"));
+        // 限了分组的令牌（allowed_groups 含旧编码）
+        String sk = seedToken(1L, "sk-rename-aaaaaa", "10.00", List.of("old.model"));
+        refreshSnapshot();
+
+        // ① 改成已存在的编码 → 拒绝
+        seedGroup("taken.model", "0.02", List.of(ch), List.of("m"));
+        mvc.perform(put("/admin/groups/" + g.getId()).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"groupCode\":\"taken.model\",\"strategy\":\"FAILOVER\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.msg").value("分组编码已存在: taken.model"));
+
+        // ② 正常改名 → 成功，且令牌 allowed_groups 自动同步
+        mvc.perform(put("/admin/groups/" + g.getId()).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"groupCode\":\"new.model\",\"strategy\":\"FAILOVER\"}"))
+                .andExpect(status().isOk());
+        refreshSnapshot();
+        ApiToken token = tokenMapper.selectById(
+                tokenMapper.selectList(com.baomidou.mybatisplus.core.toolkit.Wrappers.<ApiToken>lambdaQuery()
+                        .eq(ApiToken::getSkHash, com.drawbridge.common.Ids.sha256Hex(sk))).get(0).getId());
+        assertTrue(token.getAllowedGroups().contains("new.model")
+                && !token.getAllowedGroups().contains("old.model"),
+                "allowed_groups 未级联: " + token.getAllowedGroups());
+
+        // ③ 新编码可正常调用全链路；旧编码不可再路由
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"data\":[{\"url\":\"https://cdn.result/renamed.png\"}]}")));
+        String resp = submit(sk, "{\"model\":\"new.model\",\"prompt\":\"x\"}");
+        assertEquals("SUCCEEDED", field(resp, "status"));
+        mvc.perform(post("/v1/images/tasks").header("Authorization", "Bearer " + sk)
+                        .header("Content-Type", "application/json")
+                        .content("{\"model\":\"old.model\",\"prompt\":\"x\"}"))
+                .andExpect(status().isBadRequest());
     }
+
+    @org.junit.jupiter.api.DisplayName("渠道停用联动：其分组成员停用并稳定滑到队尾；恢复渠道不自动恢复成员")
+    @Test
+    void channelDisableCascadesGroupMembersToTail() throws Exception {
+        String admin = adminToken();
+        Channel chA = seedChannel("联动渠道A", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-a");
+        Channel chB = seedChannel("联动渠道B", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-b");
+        ModelGroup g = seedGroup("cascade.model", "0.02", List.of(chA, chB, chA),
+                List.of("m-a1", "m-b1", "m-a2"));
+        refreshSnapshot();
+
+        // 手动停用渠道 A → 其两个成员停用并滑到队尾（停用块保持原相对顺序），B 成员顶到第一
+        mvc.perform(post("/admin/channels/" + chA.getId() + "/disable").header("X-Admin-Token", admin))
+                .andExpect(status().isOk());
+        mvc.perform(get("/admin/groups/" + g.getId()).header("X-Admin-Token", admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.members[0].upstreamModel").value("m-b1"))
+                .andExpect(jsonPath("$.data.members[0].enabled").value(1))
+                .andExpect(jsonPath("$.data.members[1].upstreamModel").value("m-a1"))
+                .andExpect(jsonPath("$.data.members[1].enabled").value(0))
+                .andExpect(jsonPath("$.data.members[1].channelStatus").value(0))
+                .andExpect(jsonPath("$.data.members[2].upstreamModel").value("m-a2"))
+                .andExpect(jsonPath("$.data.members[2].enabled").value(0));
+
+        // 恢复渠道 A：成员保持停用（是否恢复由管理员在分组里决定），排序不跳动
+        mvc.perform(post("/admin/channels/" + chA.getId() + "/enable").header("X-Admin-Token", admin))
+                .andExpect(status().isOk());
+        mvc.perform(get("/admin/groups/" + g.getId()).header("X-Admin-Token", admin))
+                .andExpect(jsonPath("$.data.members[0].enabled").value(1))
+                .andExpect(jsonPath("$.data.members[1].enabled").value(0))
+                .andExpect(jsonPath("$.data.members[2].enabled").value(0));
+
+        // 自动停用路径（余额/Key 失效）同样联动：B 停用后三成员全停，已停用成员相对顺序不变
+        channelOps.autoDisable(chB.getId(), "上游余额耗尽，自动停用");
+        mvc.perform(get("/admin/groups/" + g.getId()).header("X-Admin-Token", admin))
+                .andExpect(jsonPath("$.data.members[0].upstreamModel").value("m-b1"))
+                .andExpect(jsonPath("$.data.members[0].enabled").value(0))
+                .andExpect(jsonPath("$.data.members[0].channelStatus").value(4))
+                .andExpect(jsonPath("$.data.members[1].upstreamModel").value("m-a1"))
+                .andExpect(jsonPath("$.data.members[2].upstreamModel").value("m-a2"));
+    }
+
+    @org.junit.jupiter.api.DisplayName("OpenAI 同步族·uuapi 图生图：带参考图自动切 /images/edits（images[].image_url）")
+    @Test
+    void syncUuapiEditsReferenceImageFlow() throws Exception {
+        Channel ch = seedChannel("uuapi同步渠道", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-uu",
+                Map.of("refImageStyle", "uuapi"));
+        seedGroup("uu-edit.model", "0.02", List.of(ch), List.of("gpt-image-2.5"));
+        String sk = seedToken(1L, "sk-uu-edit-aaaaaa", "10.00", null);
+        refreshSnapshot();
+
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/edits"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"data\":[{\"b64_json\":\"aGVsbG8=\"}]}")));
+        String resp = submit(sk, "{\"model\":\"uu-edit.model\",\"prompt\":\"帮我美化一下\","
+                + "\"images\":[\"https://cdn.ref/a.png\"]}");
+        assertEquals("SUCCEEDED", field(resp, "status"));
+        assertTrue(resp.contains("aGVsbG8="), resp);
+        assertEquals(1, WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/edits"))).size(),
+                "不应重试、不应换渠道，一次命中 edits 端点");
+        String upBody = WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/edits")))
+                .get(0).getBodyAsString();
+        assertTrue(upBody.contains("\"image_url\":\"https://cdn.ref/a.png\""), upBody);
+        assertTrue(upBody.contains("\"model\":\"gpt-image-2.5\""), upBody);
+    }
+
+    @org.junit.jupiter.api.DisplayName("上游 404 没号（容量类）：自动故障转移下一成员，不直接失败")
+    @Test
+    void modelUnavailable404FailsOverToNextMember() throws Exception {
+        Channel dry = seedChannel("没号渠道", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-dry");
+        Channel ok = seedChannel("健康渠道", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-ok");
+        seedGroup("dry-failover.model", "0.02", List.of(dry, ok), List.of("m-dry", "m-ok"));
+        String sk = seedToken(1L, "sk-dry-failo-aaaaaa", "10.00", null);
+        refreshSnapshot();
+
+        // 渠道 A：404 + uuapi「账号池没号」文案；渠道 B：正常出图
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .withRequestBody(containing("m-dry"))
+                .willReturn(aResponse().withStatus(404)
+                        .withBody("{\"error\":{\"message\":\"Model \\\"m-dry\\\" is not supported by any "
+                                + "configured account in this group\"}}")));
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .withRequestBody(containing("m-ok"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"data\":[{\"url\":\"https://cdn.result/dry-failover.png\"}]}")));
+
+        String resp = submit(sk, "{\"model\":\"dry-failover.model\",\"prompt\":\"x\"}");
+        assertEquals("SUCCEEDED", field(resp, "status"));
+
+        // 尝试时间线：先 MODEL_UNAVAILABLE（没号渠道），再健康渠道 SUCCESS——而不是任务直接失败
+        String taskId = field(resp, "taskId");
+        List<TaskAttempt> attempts = attemptMapper.selectList(
+                com.baomidou.mybatisplus.core.toolkit.Wrappers.<TaskAttempt>lambdaQuery()
+                        .eq(TaskAttempt::getTaskId, taskMapper.selectOne(
+                                com.baomidou.mybatisplus.core.toolkit.Wrappers.<GenerateTask>lambdaQuery()
+                                        .eq(GenerateTask::getTaskId, taskId)).getId())
+                        .orderByAsc(TaskAttempt::getAttemptNo));
+        assertEquals(2, attempts.size());
+        assertEquals("MODEL_UNAVAILABLE", attempts.get(0).getErrorKind());
+        assertEquals("FAILED", attempts.get(0).getOutcome());
+        assertEquals("SUCCESS", attempts.get(1).getOutcome());
+    }
+
+
 }
