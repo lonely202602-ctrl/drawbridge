@@ -181,6 +181,31 @@ class OpenAiImagesSyncProviderTest {
     }
 
     @Test
+    void editsSwitchWinsOverSubmitPathOverride() {
+        // 回归：path_overrides.submitPath 只管文生图；带参考图的 uuapi 渠道仍必须切 edits
+        ChannelConfigService.ChannelRuntime shadowed = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl() + "/v1", "k", Map.of("submitPath", "/images/generations"),
+                Map.of("refImageStyle", "uuapi"));
+        ImageProvider.SubmitCommand withImg = new ImageProvider.SubmitCommand("gpt-image-2.5", "美化", 1,
+                "1024x1024", null, List.of("https://r1.png"), null, 10_000);
+        wm.stubFor(post(urlEqualTo("/v1/images/edits"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"url\":\"https://x/e.png\"}]}")));
+        assertInstanceOf(ImageProvider.SubmitOutcome.Completed.class, provider.submit(withImg, shadowed));
+        wm.verify(1, postRequestedFor(urlEqualTo("/v1/images/edits")));
+        wm.verify(0, postRequestedFor(urlEqualTo("/v1/images/generations")));
+
+        // edits 端点路径本身可用 path_overrides.editsSubmitPath 覆盖
+        wm.resetAll();
+        ChannelConfigService.ChannelRuntime customEdits = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl() + "/v1", "k", Map.of("editsSubmitPath", "/img/edits"),
+                Map.of("refImageStyle", "uuapi"));
+        wm.stubFor(post(urlEqualTo("/v1/img/edits"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"url\":\"https://x/f.png\"}]}")));
+        assertInstanceOf(ImageProvider.SubmitOutcome.Completed.class, provider.submit(withImg, customEdits));
+        wm.verify(1, postRequestedFor(urlEqualTo("/v1/img/edits")));
+    }
+
+    @Test
     void channelDefaultResponseFormatInjectedButExplicitWins() {
         ChannelConfigService.ChannelRuntime urlDefault = new ChannelConfigService.ChannelRuntime(
                 wm.baseUrl() + "/v1", "k", Map.of(), Map.of("defaultResponseFormat", "url"));

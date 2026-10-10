@@ -51,7 +51,6 @@ public class SubmitChain {
     private final ConcurrencyGuard guard;
     private final ChannelOpsService channelOps;
     private final TaskFinisher finisher;
-    private final MilestoneRegistry milestones;
 
     public void run(Long taskId) {
         GenerateTask task = taskMapper.selectById(taskId);
@@ -85,11 +84,12 @@ public class SubmitChain {
             }
             tried++;
             long t0 = System.currentTimeMillis();
+            String submitUrl = null;
             try {
                 ImageProvider provider = registry.find(channel.getProtocol()).orElse(null);
                 if (provider == null) {
                     recordAttempt(task, channel, candidate.member().getUpstreamModel(),
-                            "NO_PROVIDER", null, "该协议族无适配器", costMs(t0));
+                            "NO_PROVIDER", null, "该协议族无适配器", costMs(t0), null);
                     lastError = new UpstreamCallException(UpstreamErrorKind.UNKNOWN,
                             "渠道协议无适配器: " + channel.getProtocol(), null);
                     continue;
@@ -99,15 +99,16 @@ public class SubmitChain {
                         candidate.member().getUpstreamModel(), payload.prompt(), n,
                         payload.size(), payload.aspectRatio(), payload.images(),
                         payload.options(), submitTimeout);
+                submitUrl = provider.submitUrl(cmd, rt);
                 String requestJson = com.drawbridge.common.JsonUtil.truncateBytes(
                         provider.buildRequestJson(cmd, rt),
                         config.getInt(ConfigKeys.RETENTION_BODY_MAX_BYTES));
-                // 请求体先落档：失败排障时能看到"我们发了什么"
-                archiveUpstreamRequestBody(taskId, requestJson);
+                // 请求体与命中地址先落档：失败排障时能看到"我们发了什么、发到了哪"
+                archiveUpstreamRequestBody(taskId, submitUrl, requestJson);
 
                 ImageProvider.SubmitOutcome outcome = provider.submit(cmd, rt);
                 recordAttempt(task, channel, candidate.member().getUpstreamModel(),
-                        null, null, null, costMs(t0));
+                        null, null, null, costMs(t0), submitUrl);
                 health.recordSuccess(channel.getId());
 
                 if (outcome instanceof ImageProvider.SubmitOutcome.Completed completed) {
@@ -124,14 +125,13 @@ public class SubmitChain {
                             .set(GenerateTask::getNextPollTime, LocalDateTime.now()
                                     .plusNanos(config.getLong(ConfigKeys.POLL_INITIAL_INTERVAL_MS) * 1_000_000))
                             .set(GenerateTask::getUpdatedAt, LocalDateTime.now()));
-                    milestones.release(task.getTaskId());
                     log.info("上游受理成功: taskId={}, channel={}, upstreamTaskId={}",
                             task.getTaskId(), channel.getId(), accepted.upstreamTaskId());
                     return;
                 }
             } catch (UpstreamCallException e) {
                 recordAttempt(task, channel, candidate.member().getUpstreamModel(),
-                        e.getKind().name(), e.getHttpStatus(), e.getMessage(), costMs(t0));
+                        e.getKind().name(), e.getHttpStatus(), e.getMessage(), costMs(t0), submitUrl);
                 applyChannelAction(channel, e.getKind());
                 lastError = e;
                 if (!e.getKind().isRetryable()) {
@@ -142,7 +142,7 @@ public class SubmitChain {
                         task.getTaskId(), channel.getId(), e.getKind(), e.getMessage());
             } catch (RuntimeException e) {
                 recordAttempt(task, channel, candidate.member().getUpstreamModel(),
-                        UpstreamErrorKind.UNKNOWN.name(), null, e.getMessage(), costMs(t0));
+                        UpstreamErrorKind.UNKNOWN.name(), null, e.getMessage(), costMs(t0), submitUrl);
                 health.recordFailure(channel.getId());
                 lastError = new UpstreamCallException(UpstreamErrorKind.UNKNOWN,
                         String.valueOf(e.getMessage()), null);
@@ -170,10 +170,11 @@ public class SubmitChain {
         }
     }
 
-    private void archiveUpstreamRequestBody(Long taskId, String requestJson) {
+    private void archiveUpstreamRequestBody(Long taskId, String submitUrl, String requestJson) {
         taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
                 .eq(GenerateTask::getId, taskId)
                 .set(GenerateTask::getUpstreamRequest, requestJson)
+                .set(GenerateTask::getUpstreamUrl, submitUrl)
                 .set(GenerateTask::getUpdatedAt, LocalDateTime.now()));
     }
 
@@ -186,13 +187,15 @@ public class SubmitChain {
     }
 
     private synchronized void recordAttempt(GenerateTask task, Channel channel, String upstreamModel,
-                                            String errorKind, Integer httpStatus, String errorMsg, int costMs) {
+                                            String errorKind, Integer httpStatus, String errorMsg,
+                                            int costMs, String submitUrl) {
         int no = (task.getAttemptCount() == null ? 0 : task.getAttemptCount()) + 1;
         TaskAttempt attempt = new TaskAttempt();
         attempt.setTaskId(task.getId());
         attempt.setAttemptNo(no);
         attempt.setChannelId(channel.getId());
         attempt.setUpstreamModel(upstreamModel);
+        attempt.setUpstreamUrl(submitUrl);
         attempt.setPhase("SUBMIT");
         attempt.setOutcome(errorKind == null ? "SUCCESS" : "FAILED");
         attempt.setErrorKind(errorKind);

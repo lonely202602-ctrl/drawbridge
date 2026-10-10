@@ -15,9 +15,8 @@ import java.util.Set;
 /**
  * 协议族①：OpenAI Images 同步（apiyi / laozhang / uuapi / nezhagate 的同步生图模型）。
  * POST {base}/images/generations → 2xx 直接返回 data[].url 或 data[].b64_json。
- * 图生图：默认把参考图 URL 放 body.image 直传；渠道 extra_config.refImageStyle=uuapi 时
- * 切到 POST {base}/images/edits、参考图用 images[].image_url 包裹（uuapi 的图生图契约）。
- * 提交路径可由渠道 path_overrides.submitPath 覆盖（覆盖后不再按参考图自动切换）。
+ * 图生图：渠道 extra_config.refImageStyle=uuapi 时带参考图自动切 POST {base}/images/edits、
+ * 参考图用 images[].image_url 包裹（uuapi 的图生图契约），端点选择不被 submitPath 覆盖短路。
  */
 @Component
 public class OpenAiImagesSyncProvider implements ImageProvider {
@@ -38,10 +37,14 @@ public class OpenAiImagesSyncProvider implements ImageProvider {
     }
 
     @Override
+    public String submitUrl(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
+        return Pointer.joinUrl(rt.baseUrl(), submitPath(cmd, rt));
+    }
+
+    @Override
     public SubmitOutcome submit(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
         String body = buildRequestJson(cmd, rt);
-        String url = Pointer.joinUrl(rt.baseUrl(),
-                rt.pathOverrides().getOrDefault("submitPath", defaultSubmitPath(cmd, rt)));
+        String url = submitUrl(cmd, rt);
         UpstreamHttp.HttpResult result = http.postJson(url, authHeaders(rt), body, cmd.timeoutMs());
         JsonNode node = UpstreamHttp.parseBody(result.status(), result.body());
         if (result.status() < 200 || result.status() >= 300) {
@@ -107,9 +110,17 @@ public class OpenAiImagesSyncProvider implements ImageProvider {
         return Map.of("Authorization", "Bearer " + rt.apiKey());
     }
 
-    /** 默认提交路径：显式 submitPath 覆盖优先级最高（在 submit 里处理），这里只管模板默认。 */
-    private String defaultSubmitPath(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
-        return RefImages.uuapiEdits(rt, cmd.imageUrls()) ? "/images/edits" : "/images/generations";
+    /**
+     * 提交路径：端点选择由请求形状决定——带参考图的 uuapi 风格渠道固定走 /images/edits
+     * （路径可用 path_overrides.editsSubmitPath 覆盖）；path_overrides.submitPath 只管文生图。
+     */
+    private String submitPath(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
+        if (RefImages.uuapiEdits(rt, cmd.imageUrls())) {
+            String edits = rt.pathOverrides().get("editsSubmitPath");
+            return edits == null || edits.isBlank() ? "/images/edits" : edits;
+        }
+        String override = rt.pathOverrides().get("submitPath");
+        return override != null && !override.isBlank() ? override : "/images/generations";
     }
 
     /** b64 → data URI，业务方可直接用于 <img>；格式取 options.output_format，默认 png。 */

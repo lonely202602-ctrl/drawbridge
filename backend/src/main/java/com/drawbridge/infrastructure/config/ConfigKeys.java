@@ -36,7 +36,8 @@ public enum ConfigKeys {
     RETENTION_BODY_MAX_BYTES("retention.body_max_bytes", "32768", "请求/响应存档截断上限（字节）"),
     RETENTION_CLEANUP_ENABLED("retention.cleanup_enabled", "1", "是否自动清理过期任务记录"),
 
-    OPENAPI_RATE_PER_MIN("openapi.rate_per_min", "120", "业务方令牌每分钟请求上限");
+    OPENAPI_RATE_PER_MIN("openapi.rate_per_min", "120", "业务方令牌每分钟提交上限"),
+    OPENAPI_QUERY_RATE_PER_MIN("openapi.query_rate_per_min", "600", "业务方令牌每分钟查询上限（与提交分开计数）");
 
     private final String key;
     private final String defaultValue;
@@ -46,5 +47,15 @@ public enum ConfigKeys {
         this.key = key;
         this.defaultValue = defaultValue;
         this.description = description;
+    }
+
+    /** 设置页展示用：键 → 中文描述；未知键回退为键名本身。 */
+    public static String descriptionOf(String key) {
+        for (ConfigKeys k : values()) {
+            if (k.key.equals(key)) {
+                return k.description;
+            }
+        }
+        return key;
     }
 }

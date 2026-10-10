@@ -33,5 +33,3 @@ drawbridge:
   aes-secret: ${DRAWBRIDGE_AES_SECRET:drawbridge-dev-aes-secret-change-me}
   # 管理端登录令牌签名密钥（生产务必改）
   admin-secret: ${DRAWBRIDGE_ADMIN_SECRET:drawbridge-dev-admin-secret-change-me}
-  # 提交请求最长等待上游受理/完成的时间（同步上游在请求内出图）
-  submit-wait-timeout-ms: 150000

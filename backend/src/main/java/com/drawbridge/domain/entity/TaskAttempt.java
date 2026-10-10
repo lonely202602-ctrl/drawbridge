@@ -26,6 +26,9 @@ public class TaskAttempt {
 
     private String upstreamModel;
 
+    /** 本次提交尝试命中的上游完整 URL */
+    private String upstreamUrl;
+
     private String phase;
 
     private String outcome;

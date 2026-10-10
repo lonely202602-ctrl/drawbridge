@@ -5,7 +5,7 @@
 
     <el-card v-for="(items, group) in grouped" :key="group" style="margin-bottom: 14px">
       <template #header><b>{{ group }}</b></template>
-      <el-form label-width="240px" size="small">
+      <el-form label-width="280px" size="small">
         <el-form-item v-for="item in items" :key="item.key" :label="item.description || item.key">
           <el-input v-model="values[item.key]" style="width: 180px" />
           <span class="key-hint">{{ item.key }}</span>
@@ -45,10 +45,10 @@ const grouped = computed(() => {
 
 async function load() {
   const data = await unwrap(api.get('/admin/settings'))
-  for (const [k, v] of Object.entries(data)) {
+  for (const [k, v] of Object.entries(data.values || {})) {
     values[k] = v
-    descriptions.value[k] = k
   }
+  descriptions.value = data.descriptions || {}
 }
 
 async function save() {

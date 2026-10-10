@@ -13,6 +13,7 @@ import java.util.Map;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -154,6 +155,33 @@ class OpenAiAsyncTaskProviderTest {
         ImageProvider.PollOutcome poll = provider.poll("imgtask_1", uuUrl);
         assertEquals(ImageProvider.PollOutcome.Phase.SUCCEEDED, poll.phase());
         assertEquals("https://cdn.out/final.png", poll.resultUrls().getFirst());
+    }
+
+    @Test
+    void editsSwitchWinsOverSubmitPathOverride() {
+        // 回归：path_overrides.submitPath 只管文生图；带参考图的 uuapi 渠道仍必须切 edits/async
+        ChannelConfigService.ChannelRuntime shadowed = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl() + "/v1", "sk-x", Map.of("submitPath", "/images/generations/async"),
+                Map.of("flavor", "uu", "refImageStyle", "uuapi"));
+        ImageProvider.SubmitCommand withImg = new ImageProvider.SubmitCommand("gpt-image-2.5", "美化", 1,
+                null, null, List.of("https://r1.png"), null, 10_000);
+        wm.stubFor(post(urlEqualTo("/v1/images/edits/async"))
+                .willReturn(aResponse().withStatus(202).withBody("{\"task_id\":\"imgtask_9\"}")));
+        assertEquals("imgtask_9", assertInstanceOf(ImageProvider.SubmitOutcome.Accepted.class,
+                provider.submit(withImg, shadowed)).upstreamTaskId());
+        String body = wm.findAll(postRequestedFor(urlEqualTo("/v1/images/edits/async")))
+                .get(0).getBodyAsString();
+        assertTrue(body.contains("\"image_url\":\"https://r1.png\""), body);
+
+        // edits 端点路径可用 path_overrides.editsSubmitPath 覆盖
+        wm.resetAll();
+        ChannelConfigService.ChannelRuntime customEdits = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl() + "/v1", "sk-x", Map.of("editsSubmitPath", "/img/edits"),
+                Map.of("flavor", "uu", "refImageStyle", "uuapi"));
+        wm.stubFor(post(urlEqualTo("/v1/img/edits"))
+                .willReturn(aResponse().withStatus(202).withBody("{\"task_id\":\"imgtask_10\"}")));
+        assertEquals("imgtask_10", assertInstanceOf(ImageProvider.SubmitOutcome.Accepted.class,
+                provider.submit(withImg, customEdits)).upstreamTaskId());
     }
 
     @Test

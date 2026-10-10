@@ -26,6 +26,9 @@ public interface ImageProvider {
      */
     PollOutcome poll(String upstreamTaskId, ChannelConfigService.ChannelRuntime rt);
 
+    /** 本次提交将命中的上游完整 URL（与 submit 实际发送地址同源；存档展示与排障用）。 */
+    String submitUrl(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt);
+
     /** 组装发上游的请求体（任务详情存档展示用，与 submit 内部实际发送体一致）。 */
     String buildRequestJson(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt);
 

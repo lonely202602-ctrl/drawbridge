@@ -41,10 +41,15 @@ public class CrunTaskProvider implements ImageProvider {
     }
 
     @Override
+    public String submitUrl(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
+        return Pointer.joinUrl(rt.baseUrl(),
+                rt.pathOverrides().getOrDefault("submitPath", "/client/job/CreateTask"));
+    }
+
+    @Override
     public SubmitOutcome submit(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
         com.fasterxml.jackson.databind.node.ObjectNode body = buildBody(cmd, rt);
-        String url = Pointer.joinUrl(rt.baseUrl(),
-                rt.pathOverrides().getOrDefault("submitPath", "/client/job/CreateTask"));
+        String url = submitUrl(cmd, rt);
         Map<String, String> headers = authHeaders(rt);
 
         // estimate-credits 免费预检：提前暴露参数错误，resolution 大小写自动纠正

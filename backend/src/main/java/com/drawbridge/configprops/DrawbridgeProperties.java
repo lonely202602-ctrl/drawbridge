@@ -8,6 +8,5 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "drawbridge")
 public record DrawbridgeProperties(
         String aesSecret,
-        String adminSecret,
-        long submitWaitTimeoutMs) {
+        String adminSecret) {
 }

@@ -54,6 +54,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -233,6 +234,22 @@ class GatewayIntegrationTest {
         return node.asText();
     }
 
+    /**
+     * 统一异步契约下的完整调用姿势：提交立即返回非终态任务号 → 轮询查询接口到终态，
+     * 返回最终查询响应。任何协议族（同步/异步上游）都走这一条路。
+     */
+    private String submitAndAwait(String sk, String body) throws Exception {
+        String posted = submit(sk, body);
+        String taskId = field(posted, "taskId");
+        assertTrue(List.of("SUBMITTED", "RUNNING").contains(field(posted, "status")),
+                "提交应立即返回非终态（不等上游）: " + field(posted, "status"));
+        awaitTerminal(taskId);
+        return mvc.perform(get("/v1/images/tasks/" + taskId).header("Authorization", "Bearer " + sk))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+    }
+
     private GenerateTask awaitTerminal(String taskId) {
         Awaitility.await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
             GenerateTask t = taskMapper.selectOne(
@@ -257,7 +274,7 @@ class GatewayIntegrationTest {
 
     // ------------------------------------------------------------------ 业务链路
 
-    @org.junit.jupiter.api.DisplayName("同步上游：提交响应内直接出结果")
+    @org.junit.jupiter.api.DisplayName("同步上游：提交秒回任务号，虚拟线程后台出图后查询可得")
     @Test
     void syncUpstreamInlineSuccess() throws Exception {
         Channel ch = seedChannel("同步上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
@@ -268,7 +285,7 @@ class GatewayIntegrationTest {
                 .willReturn(aResponse().withStatus(200)
                         .withBody("{\"data\":[{\"url\":\"https://cdn.result/1.png\"}]}")));
 
-        String resp = submit(sk, "{\"model\":\"image2.5\",\"prompt\":\"一只猫\"}");
+        String resp = submitAndAwait(sk, "{\"model\":\"image2.5\",\"prompt\":\"一只猫\"}");
 
         assertEquals("SUCCEEDED", field(resp, "status"));
         assertEquals("https://cdn.result/1.png",
@@ -277,6 +294,7 @@ class GatewayIntegrationTest {
 
         GenerateTask task = taskMapper.selectList(null).getFirst();
         assertEquals("SUCCEEDED", task.getStatus());
+        assertEquals(WM.baseUrl() + "/v1/images/generations", task.getUpstreamUrl());
         assertNotNull(task.getUpstreamRequest());          // 封装请求体已存档
         // 用量流水（等其落地）
         Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
@@ -300,7 +318,8 @@ class GatewayIntegrationTest {
 
         String resp = submit(sk, "{\"model\":\"image2.5\",\"prompt\":\"一只狗\"}");
         String taskId = field(resp, "taskId");
-        assertEquals("RUNNING", field(resp, "status"));   // 受理即返回
+        assertTrue(List.of("SUBMITTED", "RUNNING").contains(field(resp, "status")),
+                "提交应立即返回非终态（不等上游）: " + field(resp, "status"));
 
         // 轮询第二次查到成功
         WM.stubFor(WireMock.get(urlEqualTo("/v1/images/jobs/job_1"))
@@ -311,6 +330,7 @@ class GatewayIntegrationTest {
         assertEquals("SUCCEEDED", task.getStatus());
         assertEquals("job_1", task.getUpstreamTaskId());
         assertEquals(ch.getId(), task.getChannelId());
+        assertEquals(WM.baseUrl() + "/v1/images/generations", task.getUpstreamUrl());
         // 任务查询接口
         mvc.perform(get("/v1/images/tasks/" + taskId).header("Authorization", "Bearer " + sk))
                 .andExpect(status().isOk())
@@ -335,7 +355,7 @@ class GatewayIntegrationTest {
                 .willReturn(aResponse().withStatus(200)
                         .withBody("{\"data\":[{\"url\":\"https://cdn.result/b.png\"}]}")));
 
-        String resp = submit(sk, "{\"model\":\"image2.5\",\"prompt\":\"x\"}");
+        String resp = submitAndAwait(sk, "{\"model\":\"image2.5\",\"prompt\":\"x\"}");
         assertEquals("SUCCEEDED", field(resp, "status"));
         GenerateTask task = taskMapper.selectList(null).getFirst();
         assertEquals(b.getId(), task.getChannelId());
@@ -379,7 +399,7 @@ class GatewayIntegrationTest {
                 .willReturn(aResponse().withStatus(200)
                         .withBody("{\"data\":[{\"url\":\"https://cdn.result/ok.png\"}]}")));
 
-        String resp = submit(sk, "{\"model\":\"image2.5\",\"prompt\":\"x\"}");
+        String resp = submitAndAwait(sk, "{\"model\":\"image2.5\",\"prompt\":\"x\"}");
         assertEquals("SUCCEEDED", field(resp, "status"));
 
         // 渠道 A 被自动停用（status=4），恢复接口把它拉回来
@@ -403,7 +423,7 @@ class GatewayIntegrationTest {
                 .willReturn(aResponse().withStatus(400).withBody(
                         "{\"error\":{\"message\":\"content_policy_violation\"}}")));
 
-        String resp = submit(sk, "{\"model\":\"image2.5\",\"prompt\":\"违规内容\"}");
+        String resp = submitAndAwait(sk, "{\"model\":\"image2.5\",\"prompt\":\"违规内容\"}");
         assertEquals("FAILED", field(resp, "status"));
         assertEquals("CONTENT_REJECTED", field(resp, "error.code"));
 
@@ -429,7 +449,7 @@ class GatewayIntegrationTest {
         WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
                 .willReturn(aResponse().withStatus(500).withBody("{\"error\":{\"message\":\"down\"}}")));
 
-        String resp = submit(sk, "{\"model\":\"image2.5\",\"prompt\":\"x\"}");
+        String resp = submitAndAwait(sk, "{\"model\":\"image2.5\",\"prompt\":\"x\"}");
         assertEquals("FAILED", field(resp, "status"));
         assertEquals("UPSTREAM_ALL_FAILED", field(resp, "error.code"));
 
@@ -478,7 +498,8 @@ class GatewayIntegrationTest {
 
         String resp = submit(sk, "{\"model\":\"crun-image\",\"prompt\":\"x\"}");
         String taskId = field(resp, "taskId");
-        assertEquals("RUNNING", field(resp, "status"));   // Crun 受理成功即返回
+        assertTrue(List.of("SUBMITTED", "RUNNING").contains(field(resp, "status")),
+                "提交应立即返回非终态（不等上游）: " + field(resp, "status"));
 
         WM.stubFor(WireMock.get(urlEqualTo("/client/job/TaskInfo?task_id=ct_9"))
                 .willReturn(aResponse().withStatus(200).withBody(
@@ -563,6 +584,33 @@ class GatewayIntegrationTest {
 
     // ------------------------------------------------------------------ 管理端运营闭环
 
+    @org.junit.jupiter.api.DisplayName("查询限流：超过 openapi.query_rate_per_min 后 GET 返回 429，与提交分开计数")
+    @Test
+    void queryRateLimitedSeparatelyFromSubmit() throws Exception {
+        Channel ch = seedChannel("限流上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
+        seedGroup("qrate.model", "0.02", List.of(ch), List.of("m"));
+        String sk = seedToken(1L, "sk-qrate-aaaaaaa", "10.00", null);
+        config.updateAll(Map.of(ConfigKeys.OPENAPI_QUERY_RATE_PER_MIN.getKey(), "3"));
+        refreshSnapshot();
+        try {
+            WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                    .willReturn(aResponse().withStatus(200)
+                            .withBody("{\"data\":[{\"url\":\"https://c/q.png\"}]}")));
+            String taskId = field(submitAndAwait(sk, "{\"model\":\"qrate.model\",\"prompt\":\"x\"}"), "taskId");
+
+            // 提交占提交配额，查询占查询配额：submitAndAwait 已耗 1 次查询，再 2 次到顶
+            mvc.perform(get("/v1/images/tasks/" + taskId).header("Authorization", "Bearer " + sk))
+                    .andExpect(status().isOk());
+            mvc.perform(get("/v1/images/tasks/" + taskId).header("Authorization", "Bearer " + sk))
+                    .andExpect(status().isOk());
+            mvc.perform(get("/v1/images/tasks/" + taskId).header("Authorization", "Bearer " + sk))
+                    .andExpect(status().isTooManyRequests());
+        } finally {
+            config.updateAll(Map.of(ConfigKeys.OPENAPI_QUERY_RATE_PER_MIN.getKey(), "600"));
+            refreshSnapshot();
+        }
+    }
+
     @org.junit.jupiter.api.DisplayName("管理端全流程：登录→建渠道→试跑→建分组→发令牌→设置热更新→任务列表")
     @Test
     void adminFullFlow() throws Exception {
@@ -624,7 +672,7 @@ class GatewayIntegrationTest {
         WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
                 .willReturn(aResponse().withStatus(200)
                         .withBody("{\"data\":[{\"url\":\"https://cdn.result/admin-flow.png\"}]}")));
-        String resp = submit(sk, "{\"model\":\"image2.5\",\"prompt\":\"x\"}");
+        String resp = submitAndAwait(sk, "{\"model\":\"image2.5\",\"prompt\":\"x\"}");
         assertEquals("SUCCEEDED", field(resp, "status"));
 
         // 任务列表
@@ -645,7 +693,8 @@ class GatewayIntegrationTest {
                 .andExpect(status().isOk());
         mvc.perform(get("/admin/settings").header("X-Admin-Token", admin))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data['route.max_channel_attempts']").value("2"));
+                .andExpect(jsonPath("$.data.values['route.max_channel_attempts']").value("2"))
+                .andExpect(jsonPath("$.data.descriptions['route.max_channel_attempts']").value("单请求最多尝试的渠道数"));
     }
 
     @org.junit.jupiter.api.DisplayName("分组编码改名：新编码可调用 / 重名拒绝 / 令牌 allowed_groups 级联同步")
@@ -683,7 +732,7 @@ class GatewayIntegrationTest {
         WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
                 .willReturn(aResponse().withStatus(200)
                         .withBody("{\"data\":[{\"url\":\"https://cdn.result/renamed.png\"}]}")));
-        String resp = submit(sk, "{\"model\":\"new.model\",\"prompt\":\"x\"}");
+        String resp = submitAndAwait(sk, "{\"model\":\"new.model\",\"prompt\":\"x\"}");
         assertEquals("SUCCEEDED", field(resp, "status"));
         mvc.perform(post("/v1/images/tasks").header("Authorization", "Bearer " + sk)
                         .header("Content-Type", "application/json")
@@ -744,7 +793,7 @@ class GatewayIntegrationTest {
         WM.stubFor(WireMock.post(urlEqualTo("/v1/images/edits"))
                 .willReturn(aResponse().withStatus(200)
                         .withBody("{\"data\":[{\"b64_json\":\"aGVsbG8=\"}]}")));
-        String resp = submit(sk, "{\"model\":\"uu-edit.model\",\"prompt\":\"帮我美化一下\","
+        String resp = submitAndAwait(sk, "{\"model\":\"uu-edit.model\",\"prompt\":\"帮我美化一下\","
                 + "\"images\":[\"https://cdn.ref/a.png\"]}");
         assertEquals("SUCCEEDED", field(resp, "status"));
         assertTrue(resp.contains("aGVsbG8="), resp);
@@ -754,6 +803,85 @@ class GatewayIntegrationTest {
                 .get(0).getBodyAsString();
         assertTrue(upBody.contains("\"image_url\":\"https://cdn.ref/a.png\""), upBody);
         assertTrue(upBody.contains("\"model\":\"gpt-image-2.5\""), upBody);
+    }
+
+    @org.junit.jupiter.api.DisplayName("跨协议族故障转移：uuapi(图生图格式)失败 → Crun 重build为 img_urls 原始体，格式不串")
+    @Test
+    void refImagesRebuiltPerChannelOnCrossFamilyFailover() throws Exception {
+        Channel uuapi = seedChannel("uuapi转移源", "OPENAI_ASYNC_TASK", WM.baseUrl() + "/v1", "sk-uu",
+                Map.of("flavor", "uu", "refImageStyle", "uuapi", "urlField", "result.data[*].url"));
+        Channel crun = seedChannel("crun接盘侠", "CRUN_TASK", WM.baseUrl(), "crun-key");
+        seedGroup("cross.model", "0.02", List.of(uuapi, crun), List.of("gpt-image-2.5", "openai/gpt-image-2-5"));
+        String sk = seedToken(1L, "sk-cross-aaaaaaa", "10.00", null);
+        refreshSnapshot();
+
+        // uuapi 图生图端点 5xx（提交阶段未受理，可转移）→ Crun CreateTask 接手
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/edits/async"))
+                .willReturn(aResponse().withStatus(500).withBody("{\"error\":{\"message\":\"boom\"}}")));
+        WM.stubFor(WireMock.post(urlEqualTo("/client/job/CreateTask"))
+                .withHeader("x-api-key", containing("crun-key"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"code\":200,\"message\":\"ok\",\"data\":{\"task_id\":\"ct_cross\"}}")));
+        WM.stubFor(WireMock.get(urlEqualTo("/client/job/TaskInfo?task_id=ct_cross"))
+                .willReturn(aResponse().withStatus(200).withBody(
+                        "{\"code\":200,\"data\":{\"status\":\"success\",\"credits\":3,"
+                                + "\"result\":{\"media_urls\":[\"https://files.crun/cross.png\"]}}}")));
+
+        String resp = submitAndAwait(sk, "{\"model\":\"cross.model\",\"prompt\":\"美化一下\","
+                + "\"images\":[\"https://cdn.ref/a.png\"]}");
+
+        assertEquals("SUCCEEDED", field(resp, "status"));
+        GenerateTask task = taskMapper.selectList(null).getFirst();
+        assertEquals(crun.getId(), task.getChannelId(), "应由 Crun 渠道接手");
+
+        // Crun 收到的必须是它自己的契约：input.img_urls 原始 URL，绝无 uuapi 的 images[].image_url 残留
+        String crunBody = WM.findAll(WireMock.postRequestedFor(urlEqualTo("/client/job/CreateTask")))
+                .get(0).getBodyAsString();
+        assertTrue(crunBody.contains("\"img_urls\":[\"https://cdn.ref/a.png\"]"), crunBody);
+        assertTrue(crunBody.contains("\"model\":\"openai/gpt-image-2-5\""), crunBody);
+        assertFalse(crunBody.contains("image_url"), crunBody);
+        assertFalse(crunBody.contains("\"images\""), crunBody);
+        // 最终存档的请求体 = 成功候选（Crun）的请求体
+        assertTrue(task.getUpstreamRequest().contains("img_urls"), task.getUpstreamRequest());
+
+        // 尝试时间线：uuapi FAILED(5xx) → Crun SUCCESS
+        List<TaskAttempt> attempts = attemptMapper.selectList(
+                com.baomidou.mybatisplus.core.toolkit.Wrappers.<TaskAttempt>lambdaQuery()
+                        .eq(TaskAttempt::getTaskId, task.getId())
+                        .orderByAsc(TaskAttempt::getAttemptNo));
+        assertEquals(2, attempts.size());
+        assertEquals("UPSTREAM_SERVER_ERROR", attempts.get(0).getErrorKind());
+        assertEquals(uuapi.getId(), attempts.get(0).getChannelId());
+        assertEquals(WM.baseUrl() + "/v1/images/edits/async", attempts.get(0).getUpstreamUrl());
+        assertEquals("SUCCESS", attempts.get(1).getOutcome());
+        assertEquals(crun.getId(), attempts.get(1).getChannelId());
+        assertEquals(WM.baseUrl() + "/client/job/CreateTask", attempts.get(1).getUpstreamUrl());
+        assertEquals(WM.baseUrl() + "/client/job/CreateTask", task.getUpstreamUrl());
+    }
+
+    @org.junit.jupiter.api.DisplayName("图生图端点由请求形状决定：submitPath 覆盖不短路 edits 切换")
+    @Test
+    void editsSwitchNotShadowedBySubmitPathOverride() throws Exception {
+        Channel ch = seedChannel("覆盖渠道", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up",
+                Map.of("refImageStyle", "uuapi"));
+        // 模拟向导曾采纳文生图路径的历史配置（旧版会因此把图生图引去文生图端点）
+        ch.setPathOverrides("{\"submitPath\":\"/v1/images/generations\"}");
+        channelMapper.updateById(ch);
+        seedGroup("edit-win.model", "0.02", List.of(ch), List.of("m"));
+        String sk = seedToken(1L, "sk-editwin-aaaaaa", "10.00", null);
+        refreshSnapshot();
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/edits"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"data\":[{\"url\":\"https://cdn.result/edit-win.png\"}]}")));
+
+        String resp = submitAndAwait(sk, "{\"model\":\"edit-win.model\",\"prompt\":\"美化一下\","
+                + "\"images\":[\"https://cdn.ref/b.png\"]}");
+
+        assertEquals("SUCCEEDED", field(resp, "status"));
+        assertEquals(1, WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/edits"))).size(),
+                "带参考图必须命中 edits 端点");
+        assertEquals(0, WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations"))).size(),
+                "submitPath 覆盖不应把图生图请求引去文生图端点");
     }
 
     @org.junit.jupiter.api.DisplayName("上游 404 没号（容量类）：自动故障转移下一成员，不直接失败")
@@ -776,7 +904,7 @@ class GatewayIntegrationTest {
                 .willReturn(aResponse().withStatus(200)
                         .withBody("{\"data\":[{\"url\":\"https://cdn.result/dry-failover.png\"}]}")));
 
-        String resp = submit(sk, "{\"model\":\"dry-failover.model\",\"prompt\":\"x\"}");
+        String resp = submitAndAwait(sk, "{\"model\":\"dry-failover.model\",\"prompt\":\"x\"}");
         assertEquals("SUCCEEDED", field(resp, "status"));
 
         // 尝试时间线：先 MODEL_UNAVAILABLE（没号渠道），再健康渠道 SUCCESS——而不是任务直接失败

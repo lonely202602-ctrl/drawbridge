@@ -108,15 +108,15 @@
               <el-input v-model="w.submitPath" placeholder="提交路径（默认见模板）">
                 <template #prepend>提交路径</template>
               </el-input>
-              <template v-if="w.protocol === 'OPENAI_IMAGES_SYNC'">
+              <template v-if="w.protocol === 'OPENAI_IMAGES_SYNC' || w.protocol === 'OPENAI_ASYNC_TASK'">
                 <div style="display: flex; gap: 8px; margin-top: 8px; align-items: center">
                   <el-select v-model="w.refStyle" style="width: 250px">
                     <el-option label="图生图参考图：默认（image 直传）" value="" />
-                    <el-option label="图生图参考图：uuapi（/images/edits）" value="uuapi" />
+                    <el-option label="图生图参考图：uuapi（自动切 edits 端点）" value="uuapi" />
                   </el-select>
-                  <span class="hint">带参考图时的端点与字段格式；纯文生图不受影响</span>
+                  <span class="hint">带参考图时自动切图生图端点（同步 /images/edits · 异步 /images/edits/async）；纯文生图不受影响</span>
                 </div>
-                <div style="display: flex; gap: 8px; margin-top: 8px; align-items: center">
+                <div v-if="w.protocol === 'OPENAI_IMAGES_SYNC'" style="display: flex; gap: 8px; margin-top: 8px; align-items: center">
                   <el-select v-model="w.respFormat" style="width: 250px">
                     <el-option label="响应格式：跟随上游（不干预）" value="" />
                     <el-option label="响应格式：默认回公网 URL" value="url" />
@@ -223,6 +223,9 @@ const w = reactive({
   maxConcurrency: 5, remark: '', submitPath: '', flavor: 'nezha', refStyle: '', respFormat: '',
   queryPath: '', idField: '', statusField: '', urlField: '', editing: false
 })
+// 编辑时的配置底稿：保存按底稿合并回写，向导不认识的键（如 statusMap）不会被抹掉
+let extraBase = {}
+let pathBase = {}
 
 const protoLabel = v => ({ OPENAI_IMAGES_SYNC: 'OpenAI 同步', OPENAI_ASYNC_TASK: 'OpenAI 异步', CRUN_TASK: 'Crun', VOLCANO_ARK: '火山方舟' }[v] || v)
 const protoBadge = v => ({ OPENAI_IMAGES_SYNC: 'green', OPENAI_ASYNC_TASK: 'orange', CRUN_TASK: 'green', VOLCANO_ARK: 'gray' }[v] || 'gray')
@@ -290,6 +293,16 @@ function applyCurlAndNext() {
         applyFlavorDefaults()
         curlNotices.value.push('提交路径含 /async，已自动切换为 UU 风格（响应字段已按 UU 预填）')
       }
+      // 图生图参考图风格：/edits 是直接证据（无条件启用）；UU 风格是推断（预选，可关）
+      if (cp.includes('/edits')) {
+        if (w.refStyle !== 'uuapi') {
+          w.refStyle = 'uuapi'
+          curlNotices.value.push(`检测到图生图端点 ${cp}：已启用「图生图参考图：uuapi」，带参考图时自动切该端点（参考图按 images[].image_url 包裹）`)
+        }
+      } else if (w.flavor === 'uu' && w.protocol === 'OPENAI_ASYNC_TASK' && !w.refStyle) {
+        w.refStyle = 'uuapi'
+        curlNotices.value.push('已按 UU 风格默认启用「图生图参考图：uuapi」，带参考图时自动切 /images/edits/async，可在高级选项关闭')
+      }
     }
   }
   const q = parseCurl(w.queryCurlText)
@@ -332,6 +345,8 @@ function applyFlavorDefaults() {
 
 // ---------------- 向导动作 ----------------
 function openWizard() {
+  extraBase = {}
+  pathBase = {}
   Object.assign(w, {
     id: null, protocol: '', curlText: '', queryCurlText: '', name: '', baseUrl: '', apiKey: '',
     maxConcurrency: 5, remark: '', submitPath: '', flavor: 'nezha', refStyle: '', respFormat: '',
@@ -344,15 +359,16 @@ function openWizard() {
 }
 
 function openEdit(row) {
-  const po = row.pathOverrides ? JSON.parse(row.pathOverrides) : {}
-  const ec = row.extraConfig ? JSON.parse(row.extraConfig) : {}
+  pathBase = row.pathOverrides ? JSON.parse(row.pathOverrides) : {}
+  extraBase = row.extraConfig ? JSON.parse(row.extraConfig) : {}
   Object.assign(w, {
     id: row.id, protocol: row.protocol, curlText: '', name: row.name, baseUrl: row.baseUrl, apiKey: '',
     maxConcurrency: row.maxConcurrency || 5, remark: row.remark || '', editing: true,
-    submitPath: po.submitPath || '', queryPath: po.queryPath || ec.queryPath || '', flavor: ec.flavor || 'nezha',
-    refStyle: ec.refImageStyle || '', respFormat: ec.defaultResponseFormat || '',
-    idField: ec.idField || '',
-    statusField: ec.statusField || '', urlField: ec.urlField || ''
+    submitPath: pathBase.submitPath || '', queryPath: pathBase.queryPath || extraBase.queryPath || '',
+    flavor: extraBase.flavor || 'nezha',
+    refStyle: extraBase.refImageStyle || '', respFormat: extraBase.defaultResponseFormat || '',
+    idField: extraBase.idField || '',
+    statusField: extraBase.statusField || '', urlField: extraBase.urlField || ''
   })
   probeResult.value = null
   step.value = 1
@@ -360,22 +376,28 @@ function openEdit(row) {
 }
 
 function buildPayload() {
-  const pathOverrides = {}
-  if (w.submitPath && w.submitPath !== currentProto.value.defaultPath) pathOverrides.submitPath = w.submitPath
-  if (w.queryPath && w.queryPath !== currentProto.value.defaultQueryPath) pathOverrides.queryPath = w.queryPath
-  const extra = {}
+  const setKey = (obj, key, value) => { if (value) obj[key] = value; else delete obj[key] }
+  const pathOverrides = { ...pathBase }
+  setKey(pathOverrides, 'submitPath',
+          w.submitPath && w.submitPath !== currentProto.value.defaultPath ? w.submitPath : '')
+  setKey(pathOverrides, 'queryPath',
+          w.queryPath && w.queryPath !== currentProto.value.defaultQueryPath ? w.queryPath : '')
+  const extra = { ...extraBase }
   if (w.protocol === 'OPENAI_ASYNC_TASK') {
     extra.flavor = w.flavor
-    if (w.queryPath) extra.queryPath = w.queryPath
-    if (w.idField) extra.idField = w.idField
-    if (w.statusField) extra.statusField = w.statusField
-    if (w.urlField) extra.urlField = w.urlField
+    setKey(extra, 'queryPath', w.queryPath)
+    setKey(extra, 'idField', w.idField)
+    setKey(extra, 'statusField', w.statusField)
+    setKey(extra, 'urlField', w.urlField)
+  } else {
+    ;['flavor', 'queryPath', 'idField', 'statusField', 'urlField'].forEach(k => delete extra[k])
   }
-  if (w.protocol === 'OPENAI_IMAGES_SYNC' && w.refStyle) {
-    extra.refImageStyle = w.refStyle
-  }
-  if (w.protocol === 'OPENAI_IMAGES_SYNC' && w.respFormat) {
-    extra.defaultResponseFormat = w.respFormat
+  // 图生图参考图风格：两个 OpenAI 协议族通用（带参考图自动切 edits 系端点）
+  setKey(extra, 'refImageStyle', w.refStyle)
+  if (w.protocol === 'OPENAI_IMAGES_SYNC') {
+    setKey(extra, 'defaultResponseFormat', w.respFormat)
+  } else {
+    delete extra.defaultResponseFormat
   }
   return {
     name: w.name,

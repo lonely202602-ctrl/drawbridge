@@ -16,7 +16,7 @@ import java.util.List;
 
 /**
  * 任务终态推进（提交链路/轮询链路/兜底清扫共用）：
- * 终态 + 用量流水在同一个事务里原子写入（带状态前置条件，防并发双写），提交后唤醒等待者。
+ * 终态 + 用量流水在同一个事务里原子写入（带状态前置条件，防并发双写）。
  * drawbridge 是纯网关：不计价、不扣费、不冻结，用量流水只做成功/失败统计。
  */
 @Slf4j
@@ -26,7 +26,6 @@ public class TaskFinisher {
 
     private final GenerateTaskMapper taskMapper;
     private final UsageLogMapper usageLogMapper;
-    private final MilestoneRegistry milestones;
 
     @org.springframework.transaction.annotation.Transactional
     public void complete(Long taskId, List<String> urls, boolean inlineB64) {
@@ -62,7 +61,6 @@ public class TaskFinisher {
             return;
         }
         insertUsage(task, 1, null);
-        releaseAfterCommit(task.getTaskId());
         log.info("任务成功: taskId={}, urls={}, inlineB64={}", task.getTaskId(), urls.size(), inlineB64);
     }
 
@@ -84,7 +82,6 @@ public class TaskFinisher {
         }
         GenerateTask fresh = taskMapper.selectById(taskId);
         insertUsage(fresh, 0, errorCode);
-        releaseAfterCommit(fresh.getTaskId());
         log.warn("任务失败: taskId={}, code={}, msg={}", fresh.getTaskId(), errorCode, errorMsg);
     }
 
@@ -104,22 +101,6 @@ public class TaskFinisher {
             usageLogMapper.insert(usage);
         } catch (Exception e) {
             log.error("用量流水写入失败（不影响任务终态）: taskId={}", task.getTaskId(), e);
-        }
-    }
-
-    /** 事务提交后再唤醒提交等待者，保证等待者醒来一定能读到终态数据。 */
-    private void releaseAfterCommit(String taskId) {
-        if (org.springframework.transaction.support.TransactionSynchronizationManager
-                .isSynchronizationActive()) {
-            org.springframework.transaction.support.TransactionSynchronizationManager
-                    .registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
-                        @Override
-                        public void afterCommit() {
-                            milestones.release(taskId);
-                        }
-                    });
-        } else {
-            milestones.release(taskId);
         }
     }
 }

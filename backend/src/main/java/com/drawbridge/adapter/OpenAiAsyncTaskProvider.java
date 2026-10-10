@@ -39,17 +39,16 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
     }
 
     @Override
+    public String submitUrl(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
+        return Pointer.joinUrl(rt.baseUrl(), submitPath(cmd, rt));
+    }
+
+    @Override
     public SubmitOutcome submit(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
         String body = buildRequestJson(cmd, rt);
-        String url = Pointer.joinUrl(rt.baseUrl(), submitPath(cmd, rt));
+        String url = submitUrl(cmd, rt);
         UpstreamHttp.HttpResult result = http.postJson(url, authHeaders(rt), body, cmd.timeoutMs());
         JsonNode node = UpstreamHttp.parseBody(result.status(), result.body());
-        if (result.status() >= 500) {
-            throw ErrorClassifier.fromOpenAi(result.status(), node);
-        }
-        if (result.status() == 401 || result.status() == 403 || result.status() == 429) {
-            throw ErrorClassifier.fromOpenAi(result.status(), node);
-        }
         if (result.status() >= 400) {
             throw ErrorClassifier.fromOpenAi(result.status(), node);
         }
@@ -200,16 +199,24 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
         return Map.of("Authorization", "Bearer " + rt.apiKey());
     }
 
-    /** 提交路径：显式覆盖（pathOverrides 优先，extra 次之）；UUAPI 参考图风格带图时走 /images/edits/async。 */
+    /**
+     * 提交路径：端点选择由请求形状决定——带参考图的 uuapi 风格渠道固定走 edits 系端点
+     * （路径可用 path_overrides.editsSubmitPath 覆盖）；path_overrides.submitPath 只管文生图。
+     */
     private String submitPath(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt) {
+        if (RefImages.uuapiEdits(rt, cmd.imageUrls())) {
+            return pathOverride(rt, "editsSubmitPath", "/images/edits/async");
+        }
         String override = rt.pathOverrides().get("submitPath");
         if (override != null && !override.isBlank()) {
             return override;
         }
-        if (RefImages.uuapiEdits(rt, cmd.imageUrls())) {
-            return "/images/edits/async";
-        }
         return field(rt, "submitPath");
+    }
+
+    private String pathOverride(ChannelConfigService.ChannelRuntime rt, String key, String fallback) {
+        String v = rt.pathOverrides().get(key);
+        return v == null || v.isBlank() ? fallback : v;
     }
 
     private String normalize(String s) {

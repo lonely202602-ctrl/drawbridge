@@ -56,10 +56,16 @@
       </div>
     </div>
 
+    <h3 style="margin: 26px 4px 10px">限流（按令牌计数，超限返回 429/42901）</h3>
+    <div class="db-card hint" style="padding: 14px 18px; line-height: 2">
+      提交：<b>120 次/分钟/令牌</b> —— 查询：<b>600 次/分钟/令牌</b>（两者分开计数，互不挤占）。<br/>
+      轮询建议每 2~5 秒一次，正常业务不会触顶；收到 429 请退避后重试。阈值可在「系统设置」热调（openapi.rate_per_min / openapi.query_rate_per_min）。
+    </div>
+
     <h3 style="margin: 26px 4px 10px">注意事项</h3>
     <div class="db-card hint" style="padding: 14px 18px; line-height: 2">
       1. 结果 URL 为上游原样返回，<b>有有效期</b>，成功后请立即下载转存。<br/>
-      2. 部分模型（gpt-image 系）只回 base64：结果随<b>提交响应</b>直接返回（data:image/... 格式），查询接口取不到，请直接保存。<br/>
+      2. 部分模型（gpt-image 系）上游回 base64：result.urls 为 <code>data:image/...</code> 形式，提交后通过查询接口同样能拿到（任务存档期内可查），请及时下载转存。<br/>
       3. 幂等：提交时带 <code>X-Idempotency-Key: 业务唯一键</code>，重复提交返回同一任务不重复执行。<br/>
       4. 完整字段说明见仓库 <code>docs/API.md</code>。
     </div>
@@ -77,7 +83,7 @@ const groupCodes = computed(() => groups.value.filter(g => g.enabled === 1).map(
 const primaryGroup = computed(() => groupCodes.value[0] || '你的分组名')
 
 const endpoints = [
-  { m: 'POST', path: '/v1/images/tasks', desc: '提交生图任务，返回 taskId（同步上游会在请求内直接出结果）' },
+  { m: 'POST', path: '/v1/images/tasks', desc: '提交生图任务，立即返回 taskId（不等上游，结果轮询获取）' },
   { m: 'GET', path: '/v1/images/tasks/{taskId}', desc: '查询任务状态与结果' },
   { m: 'GET', path: '/v1/images/tasks?page=1&size=20', desc: '本令牌的任务列表（可按 status 过滤）' },
   { m: 'GET', path: '/v1/images/models', desc: '可用模型分组列表' }

@@ -36,6 +36,9 @@ public class GenerateTask {
     /** 我方封装后发上游的请求体（受理渠道那一次，存档截断） */
     private String upstreamRequest;
 
+    /** 最后一次提交尝试命中的上游完整 URL（存档展示用） */
+    private String upstreamUrl;
+
     /** 结果 JSON：{"urls":[...],"inline":"b64_json"|null,"note":"..."}（截断存档） */
     private String result;
 

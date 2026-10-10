@@ -8,7 +8,6 @@ import com.drawbridge.common.ErrorCode;
 import com.drawbridge.common.Ids;
 import com.drawbridge.common.JsonUtil;
 import com.drawbridge.common.PageResult;
-import com.drawbridge.configprops.DrawbridgeProperties;
 import com.drawbridge.domain.entity.GenerateTask;
 import com.drawbridge.domain.entity.ModelGroup;
 import com.drawbridge.domain.mapper.GenerateTaskMapper;
@@ -17,7 +16,6 @@ import com.drawbridge.infrastructure.config.ChannelConfigService;
 import com.drawbridge.infrastructure.config.ConfigKeys;
 import com.drawbridge.infrastructure.config.SystemConfigService;
 import com.drawbridge.openapi.dto.OpenApiDtos;
-import com.drawbridge.task.MilestoneRegistry;
 import com.drawbridge.task.SubmitExecutor;
 import com.drawbridge.task.TaskStatus;
 import jakarta.validation.Valid;
@@ -36,7 +34,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 业务方 API：提交生图任务 / 查询任务 / 任务列表 / 模型表。
@@ -50,11 +47,9 @@ public class OpenApiController {
 
     private final ChannelConfigService configService;
     private final SystemConfigService config;
-    private final DrawbridgeProperties props;
     private final GenerateTaskMapper taskMapper;
     private final ModelGroupMapper groupMapper;
     private final SubmitExecutor submitExecutor;
-    private final MilestoneRegistry milestones;
     private final TokenRateLimiter rateLimiter;
 
     @PostMapping("/images/tasks")
@@ -71,7 +66,7 @@ public class OpenApiController {
         if (!ctx.canUse(groupCode)) {
             throw new BizException(ErrorCode.FORBIDDEN, "令牌未授权访问模型: " + groupCode);
         }
-        if (!rateLimiter.allow(ctx.token().getId())) {
+        if (!rateLimiter.allowSubmit(ctx.token().getId())) {
             throw new BizException(ErrorCode.RATE_LIMITED);
         }
         validatePayload(body);
@@ -114,21 +109,17 @@ public class OpenApiController {
             return ApiResponse.ok(OpenApiDtos.TaskSummary.of(existing));
         }
 
-        // 注册等待 → 直派流水线（扫描是安全网）→ 等到"上游受理/任务终态"或超时
-        var waiter = milestones.register(task.getTaskId());
+        // 直派流水线（虚拟线程后台执行：路由 → 上游提交 → 同步等待/轮询都发生在后台），
+        // 请求线程不等上游，立即返回任务号，业务方轮询查询接口跟进。
         submitExecutor.kick(task.getId());
-        try {
-            waiter.get(props.submitWaitTimeoutMs(), TimeUnit.MILLISECONDS);
-        } catch (Exception ignored) {
-            // 超时/中断都按当前状态返回，业务方随后用查询接口跟进
-        }
-        return ApiResponse.ok(OpenApiDtos.TaskSummary.of(taskMapper.selectById(task.getId())));
+        return ApiResponse.ok(OpenApiDtos.TaskSummary.of(task));
     }
 
     @GetMapping("/images/tasks/{taskId}")
     public ApiResponse<OpenApiDtos.TaskSummary> query(
             @RequestAttribute(OpenApiAuthInterceptor.ATTR_AUTH) TokenService.AuthContext ctx,
             @PathVariable String taskId) {
+        requireQueryQuota(ctx);
         GenerateTask task = taskMapper.selectOne(Wrappers.<GenerateTask>lambdaQuery()
                 .eq(GenerateTask::getTaskId, taskId)
                 .eq(GenerateTask::getTokenId, ctx.token().getId()));
@@ -144,6 +135,7 @@ public class OpenApiController {
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size,
             @RequestParam(required = false) String status) {
+        requireQueryQuota(ctx);
         var wrapper = Wrappers.<GenerateTask>lambdaQuery()
                 .eq(GenerateTask::getTokenId, ctx.token().getId())
                 .orderByDesc(GenerateTask::getId);
@@ -167,6 +159,13 @@ public class OpenApiController {
                         g.getDisplayName(), g.getStrategy()))
                 .toList();
         return ApiResponse.ok(models);
+    }
+
+    /** 查询/列表共享查询配额：轮询是合法行为（默认 600 次/分/令牌），挡的是写坏的循环与滥用。 */
+    private void requireQueryQuota(TokenService.AuthContext ctx) {
+        if (!rateLimiter.allowQuery(ctx.token().getId())) {
+            throw new BizException(ErrorCode.RATE_LIMITED);
+        }
     }
 
     private void validatePayload(OpenApiDtos.ImageSubmitRequest body) {

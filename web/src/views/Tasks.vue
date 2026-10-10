@@ -53,6 +53,7 @@
           </el-table-column>
           <el-table-column prop="errorKind" label="错误类别" width="150" />
           <el-table-column prop="costMs" label="耗时ms" width="80" />
+          <el-table-column prop="upstreamUrl" label="请求地址" min-width="200" show-overflow-tooltip />
         </el-table>
         <div class="hint" style="margin-top: 6px">
           SUBMIT 阶段的「受理成功」= 上游已接收任务并返回任务号，图片由网关后台轮询推进；任务最终结果以上方任务状态为准。
@@ -61,6 +62,9 @@
         <h4>① 业务方请求体</h4>
         <pre class="json-block">{{ pretty(detail.task.bizRequest) }}</pre>
         <h4>② 封装后发上游的请求体</h4>
+        <div v-if="detail.task.upstreamUrl" class="hint" style="margin-bottom: 4px; word-break: break-all">
+          请求地址：{{ detail.task.upstreamUrl }}
+        </div>
         <pre class="json-block">{{ pretty(detail.task.upstreamRequest) }}</pre>
         <h4>③ 任务响应结果</h4>
         <pre class="json-block">{{ pretty(detail.task.result) || '（无）' }}</pre>
