@@ -3,9 +3,8 @@
     <!-- 浮动侧栏 -->
     <aside class="side">
       <div class="brand">🌉</div>
-      <el-tooltip v-for="item in menus" :key="item.path" :content="item.title" placement="right">
-        <router-link :to="item.path" class="side-item" active-class="on">{{ item.icon }}</router-link>
-      </el-tooltip>
+      <router-link v-for="item in menus" :key="item.path" :to="item.path"
+                   class="side-item" active-class="on" :title="item.title">{{ item.icon }}</router-link>
     </aside>
 
     <main class="main">
@@ -14,7 +13,7 @@
           <h1>{{ title }}</h1>
           <div class="sub">{{ sub }}</div>
         </div>
-        <el-button link type="danger" @click="logout">退出登录</el-button>
+        <button class="btn dangertext sm" @click="logout">退出登录</button>
       </div>
       <router-view v-slot="{ Component }">
         <transition name="page" mode="out-in">
@@ -55,9 +54,10 @@ function logout() {
   position: fixed;
   left: 18px; top: 18px; bottom: 18px;
   width: 62px;
-  background: #fff;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 22px;
-  box-shadow: 0 2px 10px rgba(60, 60, 50, 0.08);
+  box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -72,10 +72,10 @@ function logout() {
   border-radius: 14px;
   font-size: 18px;
   text-decoration: none;
-  color: #6d6d64;
+  color: var(--ink2);
   transition: all 0.15s;
 }
-.side-item:hover { background: #f2f0ea; }
-.side-item.on { background: #ecf2ee; color: #4a7c59; }
+.side-item:hover { background: var(--bg); }
+.side-item.on { background: var(--accent-wash); color: var(--accent); }
 .main { flex: 1; min-width: 0; margin-left: 104px; padding: 26px 28px 40px; }
 </style>

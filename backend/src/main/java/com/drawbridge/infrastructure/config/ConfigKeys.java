@@ -33,7 +33,7 @@ public enum ConfigKeys {
     TASK_STALE_MINUTES("task.stale_minutes", "10", "任务停滞多久后由兜底清扫重扫（分钟）"),
 
     RETENTION_TASK_DAYS("retention.task_days", "7", "任务记录保留天数"),
-    RETENTION_BODY_MAX_BYTES("retention.body_max_bytes", "32768", "请求/响应存档截断上限（字节）"),
+    RETENTION_BODY_MAX_BYTES("retention.body_max_bytes", "32768", "上游请求存档截断上限（字节）；只影响存档展示，实际按 ≤65KB 钳制，非法值回退 32KB"),
     RETENTION_CLEANUP_ENABLED("retention.cleanup_enabled", "1", "是否自动清理过期任务记录"),
 
     OPENAPI_RATE_PER_MIN("openapi.rate_per_min", "120", "业务方令牌每分钟提交上限"),

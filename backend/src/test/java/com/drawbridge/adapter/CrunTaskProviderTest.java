@@ -111,7 +111,7 @@ class CrunTaskProviderTest {
                 .willReturn(aResponse().withStatus(200)
                         .withBody("{\"code\":200,\"data\":{\"task_id\":\"ct_flip\"}}")));
         ImageProvider.SubmitCommand cmd = new ImageProvider.SubmitCommand(
-                "google/nano-banana-2-1", "cat", 1, "1024x1024", null, null, null, 10000);
+                "google/nano-banana-2-1", "cat", 1, "1k", null, null, null, 10000);
         ImageProvider.SubmitOutcome.Accepted accepted = assertInstanceOf(
                 ImageProvider.SubmitOutcome.Accepted.class, provider.submit(cmd, rt));
         assertEquals("ct_flip", accepted.upstreamTaskId());
@@ -150,9 +150,9 @@ class CrunTaskProviderTest {
 
     @Test
     void requestShapeMatchesCrunContract() {
-        // gpt-image-2-5 家族带 model_variant（默认 flare）+ img_urls + resolution
+        // gpt-image-2-5 家族带 model_variant（默认 flare）+ img_urls + 分辨率直译
         ImageProvider.SubmitCommand withImage = new ImageProvider.SubmitCommand(
-                "openai/gpt-image-2-5", "p", 1, "2048x1024", "3:2",
+                "openai/gpt-image-2-5", "p", 1, "2k", "3:2",
                 List.of("https://pub/ref.png"), null, 10_000);
         String body = provider.buildRequestJson(withImage, rt);
         assertTrue(body.contains("\"model\":\"openai/gpt-image-2-5\""));

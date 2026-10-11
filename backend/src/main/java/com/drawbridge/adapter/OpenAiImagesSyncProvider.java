@@ -21,9 +21,9 @@ import java.util.Set;
 @Component
 public class OpenAiImagesSyncProvider implements ImageProvider {
 
-    /** options 里不允许直接覆盖的保留键。response_format 放行：业务方可要求上游回 url 而非 b64。 */
+    /** options 里不允许直接覆盖的保留键（resolution/aspectRatio 是网关契约，由网关翻译成 size，不走后门）。 */
     private static final Set<String> RESERVED = Set.of(
-            "model", "prompt", "n", "size", "image", "images", "modelVariant");
+            "model", "prompt", "n", "size", "resolution", "aspectRatio", "image", "images", "modelVariant");
 
     private final UpstreamHttp http;
 
@@ -87,9 +87,8 @@ public class OpenAiImagesSyncProvider implements ImageProvider {
         if (cmd.n() > 0 && cmd.n() != 1) {
             body.put("n", cmd.n());
         }
-        if (cmd.size() != null && !cmd.size().isBlank()) {
-            body.put("size", cmd.size());
-        }
+        // 分辨率契约：比例+档位 → 方向归档成上游必然接受的三档尺寸（缺省=方图，永远给确定值）
+        body.put("size", Resolutions.openAiSize(cmd.aspectRatio(), cmd.resolution(), rt.extra()));
         RefImages.applyTo(body, cmd.imageUrls(), RefImages.uuapiEdits(rt, cmd.imageUrls()));
         if (cmd.options() != null) {
             for (Map.Entry<String, Object> e : cmd.options().entrySet()) {

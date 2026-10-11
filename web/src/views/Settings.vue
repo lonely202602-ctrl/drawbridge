@@ -1,25 +1,31 @@
 <template>
   <div style="max-width: 780px">
-    <el-alert type="info" :closable="false" style="margin-bottom: 14px"
-              title="运营参数保存后立即热更新生效（转发链路不重启）。分组卡片仅为阅读辅助，保存以整页为准。" />
+    <div class="alert info">
+      运营参数保存后立即热更新生效（转发链路不重启）。分组卡片仅为阅读辅助，保存以整页为准。
+    </div>
 
-    <el-card v-for="(items, group) in grouped" :key="group" style="margin-bottom: 14px">
-      <template #header><b>{{ group }}</b></template>
-      <el-form label-width="280px" size="small">
-        <el-form-item v-for="item in items" :key="item.key" :label="item.description || item.key">
-          <el-input v-model="values[item.key]" style="width: 180px" />
-          <span class="key-hint">{{ item.key }}</span>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <div v-for="(items, group) in grouped" :key="group" class="db-card" style="margin-bottom: 14px; padding: 14px 20px 18px">
+      <b style="font-size: 13.5px">{{ group }}</b>
+      <div style="margin-top: 10px">
+        <div v-for="item in items" :key="item.key" class="set-row">
+          <div class="set-label" :title="item.key">{{ item.description || item.key }}</div>
+          <div style="display: flex; align-items: center; gap: 10px">
+            <input v-model="values[item.key]" class="input" style="width: 180px" />
+            <code class="key-hint">{{ item.key }}</code>
+          </div>
+        </div>
+      </div>
+    </div>
 
-    <el-button type="primary" :loading="saving" @click="save">保存全部</el-button>
+    <button class="btn primary" :disabled="saving" @click="save">
+      <span v-if="saving" class="spin"></span>保存全部
+    </button>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { toast } from '../ui'
 import api, { unwrap } from '../api'
 
 const descriptions = ref({})
@@ -55,7 +61,7 @@ async function save() {
   saving.value = true
   try {
     await unwrap(api.put('/admin/settings', { ...values }))
-    ElMessage.success('已保存并热更新生效')
+    toast('已保存并热更新生效')
   } finally {
     saving.value = false
   }
@@ -65,5 +71,10 @@ onMounted(load)
 </script>
 
 <style scoped>
-.key-hint { margin-left: 10px; color: #bbb; font-size: 12px; }
+.set-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 7px 0;
+}
+.set-label { font-size: 13px; color: var(--ink); }
+.key-hint { opacity: 0.55; font-size: 11.5px; }
 </style>

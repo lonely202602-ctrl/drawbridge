@@ -69,14 +69,36 @@ public class OpenApiController {
         if (!rateLimiter.allowSubmit(ctx.token().getId())) {
             throw new BizException(ErrorCode.RATE_LIMITED);
         }
-        validatePayload(body);
+        // 归一化：image（单张，OpenAI 习惯）并入 images 首位；比例缺省=方图、档位缺省=1k（两族上游都拿到确定值）
+        List<String> merged = new java.util.ArrayList<>();
+        if (body.image() != null && !body.image().isBlank()) {
+            merged.add(body.image().trim());
+        }
+        if (body.images() != null) {
+            body.images().forEach(u -> {
+                if (u != null && !u.isBlank()) {
+                    merged.add(u.trim());
+                }
+            });
+        }
+        String ratio = body.aspectRatio() == null || body.aspectRatio().isBlank()
+                ? "1:1" : body.aspectRatio().trim();
+        String tier = body.resolution() == null || body.resolution().isBlank()
+                ? "1k" : body.resolution().trim().toLowerCase();
+        OpenApiDtos.ImageSubmitRequest req = new OpenApiDtos.ImageSubmitRequest(body.model(), body.prompt(),
+                body.n(), tier, ratio, null, merged.isEmpty() ? null : merged, body.options());
+        validatePayload(req);
 
-        int n = body.n() == null ? 1 : body.n();
-        // 幂等：同应用同 key 直接返回已有任务
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+        int n = req.n() == null ? 1 : req.n();
+        // 幂等：同令牌同 key 直接返回已有任务。空白键归一成 null（不该占唯一键，更不该静默复用旧任务）
+        String idemKey = idempotencyKey == null || idempotencyKey.isBlank() ? null : idempotencyKey.trim();
+        if (idemKey != null && idemKey.length() > 64) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "幂等键最长 64 字符");
+        }
+        if (idemKey != null) {
             GenerateTask existing = taskMapper.selectOne(Wrappers.<GenerateTask>lambdaQuery()
                     .eq(GenerateTask::getTokenId, ctx.token().getId())
-                    .eq(GenerateTask::getClientRequestId, idempotencyKey)
+                    .eq(GenerateTask::getClientRequestId, idemKey)
                     .last("limit 1"));
             if (existing != null) {
                 return ApiResponse.ok(OpenApiDtos.TaskSummary.of(existing));
@@ -85,14 +107,14 @@ public class OpenApiController {
 
         GenerateTask task = new GenerateTask();
         task.setTaskId(Ids.newTaskId());
-        
+
         task.setTokenId(ctx.token().getId());
         task.setGroupCode(groupCode);
         task.setStatus(TaskStatus.SUBMITTED.name());
         task.setImageCount(n);
-        task.setBizRequest(JsonUtil.truncateBytes(JsonUtil.toJson(body),
-                config.getInt(ConfigKeys.RETENTION_BODY_MAX_BYTES)));
-        task.setClientRequestId(idempotencyKey);
+        // biz_request 完整存档（MEDIUMTEXT）：执行链路从它解析入参，截断会导致参数静默丢失
+        task.setBizRequest(JsonUtil.toJson(req));
+        task.setClientRequestId(idemKey);
         LocalDateTime now = LocalDateTime.now();
         task.setNextPollTime(now);
         task.setExpiresAt(now.plusNanos(config.getLong(ConfigKeys.TASK_MAX_LIFETIME_MS) * 1_000_000));
@@ -101,11 +123,15 @@ public class OpenApiController {
         try {
             taskMapper.insert(task);
         } catch (DuplicateKeyException e) {
-            // 并发幂等竞争：退回已存在的任务
+            // 并发幂等竞争：唯一键是 (token_id, client_request_id)，冲突必属本令牌，回查退回已有任务
             GenerateTask existing = taskMapper.selectOne(Wrappers.<GenerateTask>lambdaQuery()
                     .eq(GenerateTask::getTokenId, ctx.token().getId())
-                    .eq(GenerateTask::getClientRequestId, idempotencyKey)
+                    .eq(GenerateTask::getClientRequestId, idemKey)
                     .last("limit 1"));
+            if (existing == null) {
+                log.error("幂等冲突但按令牌回查不到（不应发生）: tokenId={}, key={}", ctx.token().getId(), idemKey);
+                throw new BizException(ErrorCode.PARAM_INVALID, "幂等键冲突，请更换后重试");
+            }
             return ApiResponse.ok(OpenApiDtos.TaskSummary.of(existing));
         }
 
@@ -177,14 +203,27 @@ public class OpenApiController {
         if (body.prompt() != null && body.prompt().length() > 4000) {
             throw new BizException(ErrorCode.PARAM_INVALID, "prompt 超过 4000 字符");
         }
-        if (body.n() != null && (body.n() < 1 || body.n() > 6)) {
-            throw new BizException(ErrorCode.PARAM_INVALID, "n 取值 1-6");
+        if (body.n() != null && body.n() != 1) {
+            throw new BizException(ErrorCode.PARAM_INVALID,
+                    "一个任务固定出一张图，不支持 n 参数，多张图请提交多个任务");
         }
         if (body.images() != null) {
             if (body.images().size() > 4) {
                 throw new BizException(ErrorCode.PARAM_INVALID, "参考图最多 4 张");
             }
             body.images().forEach(this::checkUrl);
+        }
+        if (body.aspectRatio() != null && !body.aspectRatio().matches("[1-9][0-9]{0,4}:[1-9][0-9]{0,4}")) {
+            throw new BizException(ErrorCode.PARAM_INVALID,
+                    "aspectRatio 须为 W:H 形式的比例（如 1:1、16:9、9:16）: " + body.aspectRatio());
+        }
+        if (body.resolution() != null && !java.util.Set.of("1k", "2k", "4k").contains(body.resolution())) {
+            throw new BizException(ErrorCode.PARAM_INVALID,
+                    "resolution 只支持 1k/2k/4k: " + body.resolution());
+        }
+        if (body.options() != null
+                && JsonUtil.toJson(body.options()).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 64 * 1024) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "options 序列化后不能超过 64KB");
         }
     }
 
@@ -193,6 +232,9 @@ public class OpenApiController {
             return;
         }
         String u = url.trim();
+        if (u.length() > 2048) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "参考图 URL 过长（>2048 字符）");
+        }
         if (!u.startsWith("http://") && !u.startsWith("https://")) {
             throw new BizException(ErrorCode.PARAM_INVALID,
                     "参考图必须是公网可访问的 http(s) URL: " + u);

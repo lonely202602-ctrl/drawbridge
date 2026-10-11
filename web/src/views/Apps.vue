@@ -4,7 +4,7 @@
       <div class="stat-cell"><div><div class="num">{{ tokens.length }}</div><div class="lbl">令牌总数</div></div></div>
       <div class="stat-cell"><div><div class="num">{{ tokens.filter(t => t.status === 1).length }}</div><div class="lbl">启用中</div></div></div>
       <div style="margin-left: auto; align-self: center">
-        <el-button type="primary" round @click="createVisible = true">＋ 发令牌</el-button>
+        <button class="btn primary" @click="createVisible = true">＋ 发令牌</button>
       </div>
     </div>
 
@@ -19,43 +19,44 @@
           授权分组 {{ t.allowedGroups.length ? t.allowedGroups.join('、') : '全部' }}
           <span v-if="t.expiresAt"> · 过期于 {{ t.expiresAt }}</span>
         </div>
-        <div style="display: flex; gap: 6px">
-          <el-button size="small" round type="primary" plain @click="revealSk(t)">查看 SK</el-button>
-          <el-button size="small" round @click="toggleToken(t)">{{ t.status === 1 ? '禁用' : '启用' }}</el-button>
-          <el-button size="small" round type="danger" plain @click="delToken(t)">删除</el-button>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap">
+          <button class="btn primary sm" @click="revealSk(t)">查看 SK</button>
+          <button class="btn ghost sm" @click="toggleToken(t)">{{ t.status === 1 ? '禁用' : '启用' }}</button>
+          <button class="btn danger sm" @click="delToken(t)">删除</button>
         </div>
       </div>
-      <div v-if="!tokens.length" class="db-card" style="text-align: center; color: #9a9a90; padding: 40px">
+      <div v-if="!tokens.length" class="db-card" style="text-align: center; color: var(--ink2); padding: 40px">
         还没有令牌，点右上角「发令牌」
       </div>
     </div>
 
     <!-- 发令牌 -->
-    <el-dialog v-model="createVisible" title="发令牌" width="440px">
-      <el-form label-width="90px">
-        <el-form-item label="令牌名"><el-input v-model="form.name" placeholder="给谁用的，如 banana-mall" @keyup.enter="save" /></el-form-item>
-        <el-form-item label="授权分组">
-          <el-select v-model="form.allowedGroups" multiple style="width: 100%" placeholder="不选 = 可调用全部分组">
-            <el-option v-for="g in groups" :key="g.id" :value="g.groupCode" :label="g.groupCode" />
-          </el-select>
-        </el-form-item>
-        <el-button type="primary" round style="width: 100%" @click="save">生成 SK</el-button>
-      </el-form>
-    </el-dialog>
+    <XDialog v-model="createVisible" title="发令牌" width="440px">
+      <div class="field"><label>令牌名</label>
+        <input v-model="form.name" class="input" placeholder="给谁用的，如 banana-mall" @keyup.enter="save" /></div>
+      <div class="field"><label>授权分组</label>
+        <XSelect v-model="form.allowedGroups" multiple block :options="groupOptions"
+                 placeholder="不选 = 可调用全部分组" /></div>
+      <template #footer>
+        <button class="btn primary block" @click="save">生成 SK</button>
+      </template>
+    </XDialog>
 
     <!-- SK 查看（创建后 / 随时查看共用） -->
-    <el-dialog v-model="skVisible" :title="skTitle" width="520px">
-      <el-input :model-value="newSk" readonly type="textarea" :rows="2" />
-      <div style="margin-top: 10px">
-        <el-button type="primary" round @click="copySk">复制</el-button>
-      </div>
-    </el-dialog>
+    <XDialog v-model="skVisible" :title="skTitle" width="520px">
+      <textarea class="input" :value="newSk" readonly rows="2" style="font-family: var(--mono)"></textarea>
+      <template #footer>
+        <button class="btn primary" @click="copySk">复制</button>
+      </template>
+    </XDialog>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, onMounted, ref } from 'vue'
+import { toast, confirm } from '../ui'
+import XDialog from '../components/XDialog.vue'
+import XSelect from '../components/XSelect.vue'
 import api, { unwrap } from '../api'
 
 const tokens = ref([])
@@ -66,6 +67,8 @@ const skTitle = ref('SK')
 const newSk = ref('')
 const form = ref({ name: '', allowedGroups: [] })
 
+const groupOptions = computed(() => groups.value.map(g => ({ label: g.groupCode, value: g.groupCode })))
+
 async function load() {
   tokens.value = await unwrap(api.get('/admin/tokens'))
   groups.value = await unwrap(api.get('/admin/groups'))
@@ -73,7 +76,7 @@ async function load() {
 
 async function save() {
   if (!form.value.name.trim()) {
-    ElMessage.warning('令牌名不能为空')
+    toast('令牌名不能为空', 'warn')
     return
   }
   const data = await unwrap(api.post('/admin/tokens', form.value))
@@ -98,7 +101,7 @@ async function revealSk(t) {
 
 async function copySk() {
   await navigator.clipboard.writeText(newSk.value)
-  ElMessage.success('已复制')
+  toast('已复制')
 }
 
 async function toggleToken(t) {
@@ -107,7 +110,12 @@ async function toggleToken(t) {
 }
 
 async function delToken(t) {
-  await ElMessageBox.confirm(`删除令牌「${t.name}」后该 SK 立即失效，确认？`, '提示', { type: 'warning' })
+  const ok = await confirm({
+    title: '删除令牌',
+    message: `删除令牌「${t.name}」后该 SK 立即失效，确认？`,
+    danger: true, confirmText: '删除'
+  })
+  if (!ok) return
   await unwrap(api.delete(`/admin/tokens/${t.id}`))
   await load()
 }

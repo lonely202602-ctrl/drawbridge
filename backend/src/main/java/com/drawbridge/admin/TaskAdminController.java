@@ -120,6 +120,7 @@ public class TaskAdminController {
                     row.put("channelId", a.getChannelId());
                     row.put("channelName", c == null ? "(已删除)" : c.getName());
                     row.put("upstreamModel", a.getUpstreamModel());
+                    row.put("upstreamUrl", a.getUpstreamUrl());
                     row.put("errorKind", a.getErrorKind());
                     row.put("httpStatus", a.getHttpStatus());
                     row.put("errorMsg", a.getErrorMsg());

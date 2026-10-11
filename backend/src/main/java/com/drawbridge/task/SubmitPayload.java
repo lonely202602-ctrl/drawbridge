@@ -14,7 +14,7 @@ import java.util.Map;
 public record SubmitPayload(
         String prompt,
         int n,
-        String size,
+        String resolution,
         String aspectRatio,
         List<String> images,
         Map<String, Object> options) {
@@ -39,7 +39,7 @@ public record SubmitPayload(
         return new SubmitPayload(
                 node.path("prompt").isTextual() ? node.get("prompt").asText() : null,
                 Math.max(1, node.path("n").asInt(1)),
-                node.path("size").isTextual() ? node.get("size").asText() : null,
+                node.path("resolution").isTextual() ? node.get("resolution").asText() : null,
                 node.path("aspectRatio").isTextual() ? node.get("aspectRatio").asText() : null,
                 List.copyOf(images),
                 options);

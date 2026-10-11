@@ -27,10 +27,10 @@ POST /v1/images/tasks
 |---|---|---|---|
 | model | string | 是 | 模型分组名（平台分配，如 `image2.5`） |
 | prompt | string | 与 images 二选一 | 提示词，≤4000 字符 |
-| n | int | 否 | 张数，1-6，默认 1（按 n 计费） |
-| size | string | 否 | 如 `1024x1024`（是否支持取决于模型） |
-| aspectRatio | string | 否 | 如 `3:2`（部分模型支持） |
-| image | string | 否 | 参考图/底图 URL（**必须公网可访问**） |
+| n | int | 不要传 | **一个任务固定出一张图**。传 n>1 会被拒绝（400）；多张图请提交多个任务 |
+| resolution | string | 否 | 清晰度档位 `1k`/`2k`/`4k`，默认 1k；上游不支持高档时自动就近降级 |
+| aspectRatio | string | 否 | 方向意图 `W:H`（如 `16:9`、`9:16`），保证横竖不反；默认 `1:1` |
+| image | string | 否 | 参考图/底图 URL（**必须公网可访问**），等价于 images 的第一张 |
 | images | string[] | 否 | 多张参考图 URL，最多 4 张 |
 | options | object | 否 | 透传参数（quality、output_format 等，模型支持才生效） |
 

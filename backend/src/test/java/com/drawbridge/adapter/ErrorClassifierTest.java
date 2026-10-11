@@ -96,8 +96,47 @@ class ErrorClassifierTest {
     }
 
     @Test
+    void statusFirstPreventsTextFalsePositives() {
+        // 5xx 文案含 load balancer / billing：状态码优先，不再误判没米停渠道
+        assertEquals(UpstreamErrorKind.UPSTREAM_SERVER_ERROR,
+                openAi(502, "{\"error\":{\"message\":\"load balancer error\"}}").getKind());
+        assertEquals(UpstreamErrorKind.UPSTREAM_SERVER_ERROR,
+                openAi(503, "{\"error\":{\"message\":\"billing service unavailable\"}}").getKind());
+        // 429 + 限流话术带 quota：按限流（短冷却），不停渠道
+        assertEquals(UpstreamErrorKind.RATE_LIMITED,
+                openAi(429, "{\"error\":{\"message\":\"rate limit quota exceeded\"}}").getKind());
+        // WAF/网关层 403：只喂熔断换渠道，不停渠道
+        assertEquals(UpstreamErrorKind.ACCESS_FORBIDDEN,
+                openAi(403, "{\"error\":{\"message\":\"Request blocked by WAF\"}}").getKind());
+        assertTrue(UpstreamErrorKind.ACCESS_FORBIDDEN.isRetryable());
+        // 模型级权限（线上真实样本）：换渠道不停渠道
+        assertEquals(UpstreamErrorKind.MODEL_NOT_PERMITTED,
+                openAi(403, "{\"error\":{\"message\":\"The API key is not authorized to access this model\"}}").getKind());
+        // 真·没米（无歧义措辞）仍能被识别
+        assertEquals(UpstreamErrorKind.BALANCE_EXHAUSTED,
+                openAi(429, "{\"error\":{\"message\":\"无可用渠道 (1113): 余额不足\"}}").getKind());
+        assertEquals(UpstreamErrorKind.BALANCE_EXHAUSTED,
+                openAi(403, "{\"error\":{\"message\":\"账户余额不足，请充值\"}}").getKind());
+        // new-api 503 无可用渠道：容量波动转移，不喂熔断
+        assertEquals(UpstreamErrorKind.MODEL_UNAVAILABLE,
+                openAi(503, "{\"error\":{\"message\":\"当前分组 default 下对于模型 gpt-image-2 无可用渠道\"}}").getKind());
+    }
+
+    @Test
+    void crunOfficialErrorCodes() {
+        // 官方「常见错误码」表：401/404/422/429/451/500
+        assertEquals(UpstreamErrorKind.AUTH_FAILED, ErrorClassifier.fromCrunCode(401, "未授权 - API 密钥无效或缺失").getKind());
+        assertEquals(UpstreamErrorKind.TASK_NOT_FOUND, ErrorClassifier.fromCrunCode(404, "任务未找到").getKind());
+        assertTrue(!ErrorClassifier.fromCrunCode(404, "任务未找到").getKind().isRetryable(), "任务丢了不可重发");
+        assertEquals(UpstreamErrorKind.PARAM_INVALID, ErrorClassifier.fromCrunCode(422, "参数错误").getKind());
+        assertEquals(UpstreamErrorKind.RATE_LIMITED, ErrorClassifier.fromCrunCode(429, "超出请求频率限制").getKind());
+        assertEquals(UpstreamErrorKind.CONTENT_REJECTED, ErrorClassifier.fromCrunCode(451, "违反模型内容政策").getKind());
+        assertEquals(UpstreamErrorKind.UPSTREAM_SERVER_ERROR, ErrorClassifier.fromCrunCode(500, "服务器内部错误").getKind());
+    }
+
+    @Test
     void httpStatusFallback() {
-        assertEquals(UpstreamErrorKind.AUTH_FAILED,
+        assertEquals(UpstreamErrorKind.ACCESS_FORBIDDEN,
                 ErrorClassifier.fromHttpStatus(403, "").getKind());
         assertEquals(UpstreamErrorKind.UPSTREAM_SERVER_ERROR,
                 ErrorClassifier.fromHttpStatus(503, "").getKind());

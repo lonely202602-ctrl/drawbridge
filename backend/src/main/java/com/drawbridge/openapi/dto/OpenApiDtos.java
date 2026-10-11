@@ -19,8 +19,10 @@ public final class OpenApiDtos {
             String model,
             String prompt,
             Integer n,
-            String size,
+            String resolution,
             String aspectRatio,
+            /** OpenAI 习惯的单张参考图：网关归一化并入 images 首位，业务方两个都行 */
+            String image,
             List<String> images,
             JsonNode options) {
     }

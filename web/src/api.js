@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import { toast } from './ui'
 
 const api = axios.create({ timeout: 60000 })
 
@@ -18,7 +18,7 @@ api.interceptors.response.use(
     }
     const body = err.response?.data
     const msg = body?.msg || err.message
-    ElMessage.error(msg)
+    toast(msg, 'error')
     return Promise.reject(body || err)
   }
 )

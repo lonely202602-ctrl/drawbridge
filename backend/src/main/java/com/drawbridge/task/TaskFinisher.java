@@ -41,13 +41,13 @@ public class TaskFinisher {
             result.put("inline", "b64_json");
         }
         // 结果 JSON 不做截断：b64 内联图单张 1~2MB，截断会产生解析不了的残废 JSON。
-        // 列为 MEDIUMTEXT(16MB)，仅在极端体积时整体降级为占位说明，保证任何情况下都是合法 JSON。
+        // 列为 MEDIUMTEXT(16MB)；极端体积时判 RESULT_TOO_LARGE 失败——业务方反正拿不到图，
+        // 与其"成功但没图"不如如实失败（用量流水记失败）。
         String resultJson = result.toString();
         if (resultJson.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 15_000_000) {
-            var fallback = JsonUtil.MAPPER.createObjectNode();
-            fallback.putArray("urls");
-            fallback.put("note", "结果体积过大未存档，请以提交响应中的 result 为准");
-            resultJson = fallback.toString();
+            fail(taskId, "RESULT_TOO_LARGE",
+                    "生成结果体积超过存档上限（>15MB），请减少单任务出图数量后重试，或联系平台按任务号核查");
+            return;
         }
         int rows = taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
                 .eq(GenerateTask::getId, taskId)

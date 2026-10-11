@@ -37,17 +37,60 @@ public final class ErrorClassifier {
             "not supported by any|no available channel|无可用渠道|无可用账号|无可用模型|no available model",
             Pattern.CASE_INSENSITIVE);
 
+    /** 无歧义的没米措辞（"rate limit quota exceeded" 这类限流话术不含这些词）：状态层窄识别用。 */
+    private static final Pattern BALANCE_EXPLICIT = Pattern.compile(
+            "余额不足|账户.*欠费|欠费|insufficient.?quota|insufficient.?balance",
+            Pattern.CASE_INSENSITIVE);
+
     private ErrorClassifier() {
     }
 
-    /** OpenAI 族（含各中转站的 OpenAI 兼容错误体 {error:{message,type,code}}）。 */
+    /**
+     * OpenAI 族（含各中转站的 OpenAI 兼容错误体 {error:{message,type,code}}）。
+     * 分类三层，文案只做最后兜底（防 "load balancer"/"billing service" 之类文案误伤）：
+     * ① 结构化业务字段（error.type/error.code，如 insufficient_quota）——最精确；
+     * ② HTTP 状态码——权威信号（429 限流/401 Key 失效/403 拒绝访问/5xx 服务异常）；
+     * ③ 文案关键词——前两层都不认识时才参与。
+     */
     public static UpstreamCallException fromOpenAi(int status, JsonNode body) {
         JsonNode err = body.path("error");
         String message = firstText(err.path("message"), body.path("message"), "上游返回 HTTP " + status);
         String typeAndCode = err.path("type").asText("") + " " + err.path("code").asText("");
-        if (BALANCE.matcher(message).find() || BALANCE.matcher(typeAndCode).find()) {
+        // ① 结构化业务字段（insufficient_quota 常伴 429 回来，必须在状态码前拦下，否则没米会被当限流）
+        if (BALANCE.matcher(typeAndCode).find()) {
             return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, status);
         }
+        if (CONTENT.matcher(typeAndCode).find()) {
+            return new UpstreamCallException(UpstreamErrorKind.CONTENT_REJECTED, message, status);
+        }
+        // ② 状态码（①已拦结构化没米信号；这里只留无歧义的窄识别，防真没米/容量波动被埋掉）
+        if (status == 429) {
+            if (BALANCE_EXPLICIT.matcher(message).find()) {
+                return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, status);
+            }
+            return new UpstreamCallException(UpstreamErrorKind.RATE_LIMITED, message, status);
+        }
+        if (status == 401) {
+            return new UpstreamCallException(UpstreamErrorKind.AUTH_FAILED, message, status);
+        }
+        if (status == 403) {
+            if (BALANCE_EXPLICIT.matcher(message).find()) {
+                return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, status);
+            }
+            if (MODEL_PERM.matcher(message).find()) {
+                // 模型级权限（Key 有效，单模型无权）：换渠道，不停渠道
+                return new UpstreamCallException(UpstreamErrorKind.MODEL_NOT_PERMITTED, message, status);
+            }
+            return new UpstreamCallException(UpstreamErrorKind.ACCESS_FORBIDDEN, message, status);
+        }
+        if (status >= 500) {
+            if (MODEL_UNAVAILABLE.matcher(message).find()) {
+                // new-api 系 503「无可用渠道」：容量波动不是故障，转移而不喂熔断
+                return new UpstreamCallException(UpstreamErrorKind.MODEL_UNAVAILABLE, message, status);
+            }
+            return new UpstreamCallException(UpstreamErrorKind.UPSTREAM_SERVER_ERROR, message, status);
+        }
+        // ③ 文案兜底
         if (CONTENT.matcher(message).find()) {
             return new UpstreamCallException(UpstreamErrorKind.CONTENT_REJECTED, message, status);
         }
@@ -60,14 +103,11 @@ public final class ErrorClassifier {
         if (FILE_UNSUPPORTED.matcher(message).find()) {
             return new UpstreamCallException(UpstreamErrorKind.PARAM_INVALID, message, status);
         }
-        if (status == 429 || RATE.matcher(message).find()) {
+        if (RATE.matcher(message).find()) {
             return new UpstreamCallException(UpstreamErrorKind.RATE_LIMITED, message, status);
         }
-        if (status == 401 || status == 403) {
-            return new UpstreamCallException(UpstreamErrorKind.AUTH_FAILED, message, status);
-        }
-        if (status >= 500) {
-            return new UpstreamCallException(UpstreamErrorKind.UPSTREAM_SERVER_ERROR, message, status);
+        if (BALANCE.matcher(message).find()) {
+            return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, status);
         }
         if (status == 400 || status == 404 || status == 405 || status == 422) {
             return new UpstreamCallException(UpstreamErrorKind.PARAM_INVALID, message, status);
@@ -75,8 +115,24 @@ public final class ErrorClassifier {
         return new UpstreamCallException(UpstreamErrorKind.UNKNOWN, message, status);
     }
 
-    /** Crun {code,message,data} 壳：HTTP 200 但业务 code != 200。 */
+    /**
+     * Crun {code,message,data} 壳：HTTP 200 但业务 code != 200。
+     * 官方「常见错误码」直映射：401 鉴权 / 404 任务未找到 / 422 参数 / 429 限流 / 451 内容政策；
+     * 枚举之外的先走文案关键词精确识别，再落状态段（402 没米、4xx 参数、5xx 服务异常）。
+     */
     public static UpstreamCallException fromCrunCode(int code, String message) {
+        if (code == 401) {
+            return new UpstreamCallException(UpstreamErrorKind.AUTH_FAILED, message, code);
+        }
+        if (code == 404) {
+            return new UpstreamCallException(UpstreamErrorKind.TASK_NOT_FOUND, message, code);
+        }
+        if (code == 451) {
+            return new UpstreamCallException(UpstreamErrorKind.CONTENT_REJECTED, message, code);
+        }
+        if (code == 429) {
+            return new UpstreamCallException(UpstreamErrorKind.RATE_LIMITED, message, code);
+        }
         if (BALANCE.matcher(message).find()) {
             return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, code);
         }
@@ -92,13 +148,10 @@ public final class ErrorClassifier {
         if (FILE_UNSUPPORTED.matcher(message).find()) {
             return new UpstreamCallException(UpstreamErrorKind.PARAM_INVALID, message, code);
         }
-        if (code == 401 || code == 403) {
-            return new UpstreamCallException(UpstreamErrorKind.AUTH_FAILED, message, code);
-        }
         if (code == 402) {
             return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, code);
         }
-        if (code == 429 || RATE.matcher(message).find()) {
+        if (RATE.matcher(message).find()) {
             return new UpstreamCallException(UpstreamErrorKind.RATE_LIMITED, message, code);
         }
         if (code >= 400 && code < 450) {
@@ -113,8 +166,12 @@ public final class ErrorClassifier {
     /** 纯 HTTP 状态归类（协议壳之外的情况）。 */
     public static UpstreamCallException fromHttpStatus(int status, String bodyHead) {
         String s = bodyHead == null ? "" : bodyHead;
-        if (status == 401 || status == 403) {
+        if (status == 401) {
             return new UpstreamCallException(UpstreamErrorKind.AUTH_FAILED, "上游鉴权失败（HTTP " + status + "）", status);
+        }
+        if (status == 403) {
+            return new UpstreamCallException(UpstreamErrorKind.ACCESS_FORBIDDEN,
+                    "上游拒绝访问（HTTP 403，可能是 WAF/网关拦截）" + head(s), status);
         }
         if (status == 429) {
             return new UpstreamCallException(UpstreamErrorKind.RATE_LIMITED, "上游限流（HTTP 429）", status);

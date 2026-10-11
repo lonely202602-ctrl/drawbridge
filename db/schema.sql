@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS generate_task (
     group_code        VARCHAR(64)  NOT NULL,
     status            VARCHAR(16)  NOT NULL DEFAULT 'SUBMITTED' COMMENT 'SUBMITTED/RUNNING/SUCCEEDED/FAILED',
     image_count       INT          NOT NULL DEFAULT 1,
-    biz_request       TEXT         NULL COMMENT '业务方原始请求体（截断存档）',
+    biz_request       MEDIUMTEXT   NULL COMMENT '业务方原始请求体（完整存档，执行入参来源）',
     upstream_request  TEXT         NULL COMMENT '发上游的封装请求体（截断存档）',
     upstream_url      VARCHAR(512) NULL COMMENT '最后一次提交尝试命中的上游完整URL',
     result            MEDIUMTEXT   NULL COMMENT '结果 JSON（b64 内联图最大约 2MB/张，不截断）',
@@ -104,15 +104,16 @@ CREATE TABLE IF NOT EXISTS generate_task (
     expires_at        DATETIME     NOT NULL,
     freeze_amount     DECIMAL(12, 4) NOT NULL DEFAULT 0,
     settle_amount     DECIMAL(12, 4) NULL,
-    client_request_id VARCHAR(64)  NULL,
+    client_request_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL,
     finish_time       DATETIME     NULL,
     created_at        DATETIME     NOT NULL,
     updated_at        DATETIME     NOT NULL,
     UNIQUE KEY uk_task_id (task_id),
-    UNIQUE KEY uk_client_request (client_request_id),
+    UNIQUE KEY uk_token_request (token_id, client_request_id),
     KEY idx_status_nextpoll (status, next_poll_time),
     KEY idx_expires (status, expires_at),
-    KEY idx_token_created (token_id, created_at)
+    KEY idx_token_created (token_id, created_at),
+    KEY idx_created (created_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 
 -- 任务尝试流水（重试时间线）

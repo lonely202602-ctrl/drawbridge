@@ -22,6 +22,10 @@ public enum UpstreamErrorKind {
     AUTH_FAILED(true, ChannelAction.AUTO_DISABLE, "UPSTREAM_ALL_FAILED"),
     /** Key 有效但无权访问该模型（模型级权限，渠道其它模型正常）：换渠道重试，不停用渠道 */
     MODEL_NOT_PERMITTED(true, ChannelAction.NONE, "UPSTREAM_MODEL_NOT_PERMITTED"),
+    /** 403 拒绝访问（WAF/网关层拦截等，无模型级文案）：只喂熔断换渠道，不停用渠道（防 WAF 误拦关掉健康渠道） */
+    ACCESS_FORBIDDEN(true, ChannelAction.BREAKER_FEED, "UPSTREAM_ALL_FAILED"),
+    /** 上游查不到该任务（404 任务未找到）：轮询期任务已受理不可重发，直接终态 */
+    TASK_NOT_FOUND(false, ChannelAction.NONE, "UPSTREAM_TASK_LOST"),
     /** 渠道当前没有可服务此模型的账号/容量（如 new-api 系 404「无可用渠道」）：换渠道重试，不停用渠道 */
     MODEL_UNAVAILABLE(true, ChannelAction.NONE, "UPSTREAM_MODEL_UNAVAILABLE"),
     /** 提示词/内容审核拦截：不重试，作为任务结果返回业务方 */

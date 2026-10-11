@@ -2,12 +2,14 @@
   <div class="login-wrap">
     <div class="login-card">
       <div style="font-size: 40px; text-align: center">🌉</div>
-      <h2 style="text-align: center; margin: 6px 0 20px">drawbridge 控制台</h2>
-      <el-form @keyup.enter="login">
-        <el-form-item><el-input v-model="form.username" placeholder="用户名" size="large" /></el-form-item>
-        <el-form-item><el-input v-model="form.password" type="password" placeholder="密码" size="large" show-password /></el-form-item>
-        <el-button type="primary" size="large" round style="width: 100%" :loading="loading" @click="login">登 录</el-button>
-      </el-form>
+      <h2 style="text-align: center; margin: 6px 0 22px">drawbridge 控制台</h2>
+      <div class="field"><label>用户名</label>
+        <input v-model="form.username" class="input" placeholder="用户名" @keyup.enter="login" /></div>
+      <div class="field"><label>密码</label>
+        <input v-model="form.password" class="input" type="password" placeholder="密码" @keyup.enter="login" /></div>
+      <button class="btn primary block" style="margin-top: 8px" :disabled="loading" @click="login">
+        <span v-if="loading" class="spin"></span>登 录
+      </button>
     </div>
   </div>
 </template>
@@ -38,10 +40,11 @@ async function login() {
 <style scoped>
 .login-wrap {
   display: flex; justify-content: center; align-items: center; height: 100vh;
-  background: #f2f0ea;
+  background: var(--bg);
 }
 .login-card {
-  background: #fff; border-radius: 22px; padding: 36px 34px 30px; width: 380px;
-  box-shadow: 0 10px 40px rgba(60, 60, 50, 0.1);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 22px; padding: 36px 34px 30px; width: 380px;
+  box-shadow: var(--shadow-lg);
 }
 </style>

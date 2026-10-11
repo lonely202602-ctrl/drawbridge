@@ -120,8 +120,9 @@ class OpenAiImagesSyncProviderTest {
     @Test
     void buildRequestRespectsReservedKeysAndPassthrough() {
         ImageProvider.SubmitCommand cmd = new ImageProvider.SubmitCommand("m1", "p", 2,
-                "512x512", null, List.of("https://r.png"),
-                Map.of("quality", "high", "model", "HACK", "prompt", "HACK", "modelVariant", "x"),
+                "1k", "16:9", List.of("https://r.png"),
+                Map.of("quality", "high", "model", "HACK", "prompt", "HACK", "modelVariant", "x",
+                        "size", "HACK", "resolution", "HACK", "aspectRatio", "HACK"),
                 10_000);
         String json = provider.buildRequestJson(cmd, rt);
         assertTrue(json.contains("\"quality\":\"high\""));
@@ -130,8 +131,27 @@ class OpenAiImagesSyncProviderTest {
         assertTrue(json.contains("\"n\":2"));
         assertTrue(json.contains("\"model\":\"m1\""));
         assertTrue(json.contains("\"prompt\":\"p\""));
-        assertTrue(json.contains("\"size\":\"512x512\""));
+        // 分辨率契约：16:9 横版归档，档位在该族降级；契约键不可被 options 绕过
+        assertTrue(json.contains("\"size\":\"1536x1024\""));
         assertFalse(json.contains("HACK"));
+    }
+
+    @Test
+    void resolutionContractDirectionArchiveAndSizeMap() {
+        // 方图缺省 / 竖版 / sizeMap 覆盖
+        assertTrue(provider.buildRequestJson(cmd(), rt).contains("\"size\":\"1024x1024\""),
+                "缺省比例=方图 1024x1024");
+        ImageProvider.SubmitCommand portrait = new ImageProvider.SubmitCommand(
+                "m", "p", 1, "4k", "9:16", null, null, 10_000);
+        assertTrue(provider.buildRequestJson(portrait, rt).contains("\"size\":\"1024x1536\""),
+                "竖版归档 1024x1536（4k 在该族降级为最好一档）");
+        ChannelConfigService.ChannelRuntime mapped = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl() + "/v1", "k", Map.of(),
+                Map.of("sizeMap", Map.of("2k", "2048x2048")));
+        ImageProvider.SubmitCommand tier2k = new ImageProvider.SubmitCommand(
+                "m", "p", 1, "2k", "16:9", null, null, 10_000);
+        assertTrue(provider.buildRequestJson(tier2k, mapped).contains("\"size\":\"2048x2048\""),
+                "渠道 sizeMap 按档位整表覆盖");
     }
 
     @Test

@@ -30,7 +30,7 @@ public class GenerateTask {
 
     private Integer imageCount;
 
-    /** 业务方原始请求体（存档，超上限截断） */
+    /** 业务方原始请求体（MEDIUMTEXT 完整存档；执行链路从它解析入参，不截断） */
     private String bizRequest;
 
     /** 我方封装后发上游的请求体（受理渠道那一次，存档截断） */

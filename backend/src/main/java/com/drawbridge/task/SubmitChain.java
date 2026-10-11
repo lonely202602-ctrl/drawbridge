@@ -85,6 +85,8 @@ public class SubmitChain {
             tried++;
             long t0 = System.currentTimeMillis();
             String submitUrl = null;
+            boolean upstreamHit = false;
+            ImageProvider.SubmitOutcome currentOutcome = null;
             try {
                 ImageProvider provider = registry.find(channel.getProtocol()).orElse(null);
                 if (provider == null) {
@@ -97,38 +99,32 @@ public class SubmitChain {
                 ChannelConfigService.ChannelRuntime rt = configService.runtimeOf(channel);
                 ImageProvider.SubmitCommand cmd = new ImageProvider.SubmitCommand(
                         candidate.member().getUpstreamModel(), payload.prompt(), n,
-                        payload.size(), payload.aspectRatio(), payload.images(),
+                        payload.resolution(), payload.aspectRatio(), payload.images(),
                         payload.options(), submitTimeout);
                 submitUrl = provider.submitUrl(cmd, rt);
                 String requestJson = com.drawbridge.common.JsonUtil.truncateBytes(
                         provider.buildRequestJson(cmd, rt),
                         config.getInt(ConfigKeys.RETENTION_BODY_MAX_BYTES));
-                // 请求体与命中地址先落档：失败排障时能看到"我们发了什么、发到了哪"
+                // 请求体与命中地址先落档：失败排障时能看到"我们发了什么、发到了哪"；
+                // 同时是兜底清扫的重跑判据（已存档=已到达发送点，不允许自动重跑）
                 archiveUpstreamRequestBody(taskId, submitUrl, requestJson);
 
                 ImageProvider.SubmitOutcome outcome = provider.submit(cmd, rt);
-                recordAttempt(task, channel, candidate.member().getUpstreamModel(),
-                        null, null, null, costMs(t0), submitUrl);
+                // 跨过这一行，上游已受理：此后任何异常都不允许换渠道重发（防重复出图重复扣费）
+                upstreamHit = true;
+                currentOutcome = outcome;
+                try {
+                    recordAttempt(task, channel, candidate.member().getUpstreamModel(),
+                            null, null, null, costMs(t0), submitUrl);
+                } catch (Exception ae) {
+                    log.warn("尝试流水写入失败（不影响受理，任务时间线会缺一条）: taskId={}", task.getTaskId(), ae);
+                }
                 health.recordSuccess(channel.getId());
-
-                if (outcome instanceof ImageProvider.SubmitOutcome.Completed completed) {
-                    archiveUpstreamRequest(taskId, requestJson, channel.getId());
-                    finisher.complete(taskId, completed.resultUrls(), completed.inlineB64());
-                    return;
-                }
-                if (outcome instanceof ImageProvider.SubmitOutcome.Accepted accepted) {
-                    archiveUpstreamRequest(taskId, requestJson, channel.getId());
-                    taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
-                            .eq(GenerateTask::getId, taskId)
-                            .set(GenerateTask::getUpstreamTaskId, accepted.upstreamTaskId())
-                            .set(GenerateTask::getPollCount, 0)
-                            .set(GenerateTask::getNextPollTime, LocalDateTime.now()
-                                    .plusNanos(config.getLong(ConfigKeys.POLL_INITIAL_INTERVAL_MS) * 1_000_000))
-                            .set(GenerateTask::getUpdatedAt, LocalDateTime.now()));
-                    log.info("上游受理成功: taskId={}, channel={}, upstreamTaskId={}",
-                            task.getTaskId(), channel.getId(), accepted.upstreamTaskId());
-                    return;
-                }
+                // 收尾写库（存档+终态/任务号）带内部重试；全失败向上抛，由 upstreamHit 分支兜住（带上游凭证落日志）
+                persistOutcome(task, taskId, outcome, requestJson, channel);
+                log.info("上游受理成功: taskId={}, channel={}, outcome={}",
+                        task.getTaskId(), channel.getId(), describeOutcome(outcome));
+                return;
             } catch (UpstreamCallException e) {
                 recordAttempt(task, channel, candidate.member().getUpstreamModel(),
                         e.getKind().name(), e.getHttpStatus(), e.getMessage(), costMs(t0), submitUrl);
@@ -141,6 +137,18 @@ public class SubmitChain {
                 log.warn("渠道提交失败，换下一候选: taskId={}, channel={}, kind={}, msg={}",
                         task.getTaskId(), channel.getId(), e.getKind(), e.getMessage());
             } catch (RuntimeException e) {
+                if (upstreamHit) {
+                    // 上游已受理，收尾写库重试后仍失败：绝不换渠道重发；任务保持 RUNNING。
+                    // 上游凭证（任务号/结果地址）随日志落盘——库里的 upstream_task_id 没写进去，这里是唯一线索。
+                    log.error("上游已受理但收尾写库失败（不重发，防重复扣费）: taskId={}, channel={}, 上游侧凭证={}",
+                            task.getTaskId(), channel.getId(), describeOutcome(currentOutcome), e);
+                    return;
+                }
+                if (e instanceof org.springframework.dao.DataAccessException) {
+                    // 基础设施故障（DB/连接池）不是渠道的病：不记尝试、不喂熔断，抛回执行器回退待重跑
+                    log.error("提交链路数据库异常，任务回退待重跑: taskId={}", task.getTaskId(), e);
+                    throw e;
+                }
                 recordAttempt(task, channel, candidate.member().getUpstreamModel(),
                         UpstreamErrorKind.UNKNOWN.name(), null, e.getMessage(), costMs(t0), submitUrl);
                 health.recordFailure(channel.getId());
@@ -159,8 +167,56 @@ public class SubmitChain {
         finisher.fail(taskId, code, msg);
     }
 
-    private void applyChannelAction(Channel channel, UpstreamErrorKind kind) {
-        switch (kind.getChannelAction()) {
+    /**
+     * 受理后的收尾写库（存档 + 终态/任务号）。瞬时 DB 故障内部重试 3 次；
+     * 全失败向上抛——调用方处于 upstreamHit 状态，绝不换渠道重发，只落日志（含上游凭证）。
+     */
+    private void persistOutcome(GenerateTask task, Long taskId, ImageProvider.SubmitOutcome outcome,
+                                String requestJson, Channel channel) {
+        RuntimeException last = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                archiveUpstreamRequest(taskId, requestJson, channel.getId());
+                if (outcome instanceof ImageProvider.SubmitOutcome.Completed completed) {
+                    finisher.complete(taskId, completed.resultUrls(), completed.inlineB64());
+                } else if (outcome instanceof ImageProvider.SubmitOutcome.Accepted accepted) {
+                    taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
+                            .eq(GenerateTask::getId, taskId)
+                            .set(GenerateTask::getUpstreamTaskId, accepted.upstreamTaskId())
+                            .set(GenerateTask::getPollCount, 0)
+                            .set(GenerateTask::getNextPollTime, LocalDateTime.now()
+                                    .plusNanos(config.getLong(ConfigKeys.POLL_INITIAL_INTERVAL_MS) * 1_000_000))
+                            .set(GenerateTask::getUpdatedAt, LocalDateTime.now()));
+                }
+                return;
+            } catch (RuntimeException e) {
+                last = e;
+                log.warn("收尾写库失败（第 {}/3 次）: taskId={}", attempt, taskId, e);
+                try {
+                    Thread.sleep(300L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        throw last;
+    }
+
+    /** 上游受理凭证（排障用）：异步=任务号；同步=结果地址（b64 内联不落日志，只报张数）。 */
+    private String describeOutcome(ImageProvider.SubmitOutcome outcome) {
+        if (outcome instanceof ImageProvider.SubmitOutcome.Accepted accepted) {
+            return "upstreamTaskId=" + accepted.upstreamTaskId();
+        }
+        if (outcome instanceof ImageProvider.SubmitOutcome.Completed completed) {
+            return completed.inlineB64()
+                    ? "inlineB64=" + completed.resultUrls().size() + "张(b64内联)"
+                    : "urls=" + completed.resultUrls();
+        }
+        return "unknown";
+    }
+
+    private void applyChannelAction(Channel channel, UpstreamErrorKind kind) {        switch (kind.getChannelAction()) {
             case COOLDOWN -> cooldown.cool(channel.getId());
             case AUTO_DISABLE -> channelOps.autoDisable(channel.getId(),
                     kind == UpstreamErrorKind.BALANCE_EXHAUSTED ? "上游余额耗尽，自动停用" : "上游 Key 失效/被拒，自动停用");

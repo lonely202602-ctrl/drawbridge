@@ -7,6 +7,8 @@ spring:
   threads:
     virtual:
       enabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: 30s   # 优雅停机：给在途提交/轮询最多 30s 收尾
   datasource:
     url: jdbc:mysql://${DRAWBRIDGE_DB_HOST:localhost}:${DRAWBRIDGE_DB_PORT:3306}/${DRAWBRIDGE_DB_NAME:drawbridge}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&rewriteBatchedStatements=true
     username: ${DRAWBRIDGE_DB_USER:root}

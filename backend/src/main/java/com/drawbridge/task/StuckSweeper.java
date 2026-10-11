@@ -16,7 +16,7 @@ import java.util.List;
 /**
  * 兜底清扫（追踪保证的最后一道网，每分钟）：
  * ① 超过生命周期的非终态任务 → FAILED(TIMEOUT)
- * ② RUNNING 无上游任务号且停滞 → 退回 SUBMITTED（提交链路崩溃残留）
+ * ② RUNNING 无上游任务号且从未发送上游（无请求体存档）且停滞 → 退回 SUBMITTED（提交链路崩溃残留）
  * ③ RUNNING 有上游任务号且停滞 → 重置轮询时间（轮询链路崩溃残留）
  * ④ SUBMITTED 但 next_poll_time 在未来且停滞 → 立即可扫
  */
@@ -50,10 +50,13 @@ public class StuckSweeper {
                 .last("limit 200"));
         expired.forEach(t -> finisher.fail(t.getId(), "TIMEOUT", "任务超过最大生命周期"));
 
-        // ② 提交链路崩溃残留（未受理上游，可安全重跑）
+        // ② 提交链路崩溃残留（未受理上游，可安全重跑）。
+        // 判据：upstream_request 为空 = 从未到达发送点（请求体在调用上游前已落档）；
+        // 已存档的任务不自动重跑——上游可能已受理，重发会重复扣费，交给 ① 超时终态 + 人工按存档介入。
         taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
                 .eq(GenerateTask::getStatus, TaskStatus.RUNNING.name())
                 .isNull(GenerateTask::getUpstreamTaskId)
+                .isNull(GenerateTask::getUpstreamRequest)
                 .lt(GenerateTask::getUpdatedAt, staleBefore)
                 .set(GenerateTask::getStatus, TaskStatus.SUBMITTED.name())
                 .set(GenerateTask::getNextPollTime, now)

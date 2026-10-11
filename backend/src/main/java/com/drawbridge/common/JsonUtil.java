@@ -44,17 +44,19 @@ public final class JsonUtil {
 
     /**
      * 按字节数截断字符串（存档上限用），保证不破坏 UTF-8 字符。
+     * 防御性钳制：非正值回退默认 32KB，上限不超过 TEXT 列容量——存档配置错误不应引发写库 500。
      */
     public static String truncateBytes(String s, int maxBytes) {
-        if (s == null || maxBytes <= 0) {
+        int cap = maxBytes <= 0 ? 32_768 : Math.min(maxBytes, 65_000);
+        if (s == null) {
             return s;
         }
         byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
-        if (bytes.length <= maxBytes) {
+        if (bytes.length <= cap) {
             return s;
         }
-        int end = Math.min(s.length(), maxBytes);
-        while (end > 0 && s.substring(0, end).getBytes(StandardCharsets.UTF_8).length > maxBytes) {
+        int end = Math.min(s.length(), cap);
+        while (end > 0 && s.substring(0, end).getBytes(StandardCharsets.UTF_8).length > cap) {
             end--;
         }
         return s.substring(0, end) + "...[truncated]";

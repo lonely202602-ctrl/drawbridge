@@ -49,6 +49,7 @@ public class GroupAdminController {
     private final GroupMemberMapper memberMapper;
     private final ChannelMapper channelMapper;
     private final ApiTokenMapper tokenMapper;
+    private final com.drawbridge.domain.mapper.GenerateTaskMapper taskMapper;
     private final ChannelConfigService configService;
     private final RouteEngine routeEngine;
 
@@ -158,8 +159,9 @@ public class GroupAdminController {
         }
     }
 
-    @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id) {
+    /** 停用（软删除语义的正式化）：业务方立即不可调用，数据保留，可随时 enable 恢复。 */
+    @PostMapping("/{id}/disable")
+    public ApiResponse<Void> disable(@PathVariable Long id) {
         ModelGroup group = groupMapper.selectById(id);
         if (group == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "分组不存在");
@@ -169,6 +171,70 @@ public class GroupAdminController {
         groupMapper.updateById(group);
         configService.refresh();
         return ApiResponse.ok();
+    }
+
+    /** 停用分组恢复启用。 */
+    @PostMapping("/{id}/enable")
+    public ApiResponse<Void> enable(@PathVariable Long id) {
+        ModelGroup group = groupMapper.selectById(id);
+        if (group == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "分组不存在");
+        }
+        group.setEnabled(1);
+        group.setUpdatedAt(LocalDateTime.now());
+        groupMapper.updateById(group);
+        configService.refresh();
+        routeEngine.resetPolling(id);
+        return ApiResponse.ok();
+    }
+
+    /**
+     * 真删除：移除分组与其全部成员条目，编码即刻可复用；历史任务存的是 group_code 字符串不受影响。
+     * 有在途任务（SUBMITTED/RUNNING）时拒绝——删了它们会在路由时撞 NO_AVAILABLE_CHANNEL。
+     * 事务：成员与分组必须同生共死，否则会留下无成员的孤儿分组。
+     * 级联清理令牌 allowed_groups 里的本分组编码（与改名级联对齐）：否则删了 X 再建同名 X，
+     * 原来限定授权 X 的令牌会自动拿到新分组的权限（权限漂移）。
+     */
+    @org.springframework.transaction.annotation.Transactional
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        ModelGroup group = groupMapper.selectById(id);
+        if (group == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "分组不存在");
+        }
+        long inflight = taskMapper.selectCount(Wrappers.<com.drawbridge.domain.entity.GenerateTask>lambdaQuery()
+                .eq(com.drawbridge.domain.entity.GenerateTask::getGroupCode, group.getGroupCode())
+                .in(com.drawbridge.domain.entity.GenerateTask::getStatus,
+                        com.drawbridge.task.TaskStatus.SUBMITTED.name(), com.drawbridge.task.TaskStatus.RUNNING.name()));
+        if (inflight > 0) {
+            throw new BizException(ErrorCode.PARAM_INVALID,
+                    "该分组还有 " + inflight + " 个在途任务，请等它们终态后再删除（可先停用分组停止进入）");
+        }
+        cascadeRemoveAllowedGroup(group.getGroupCode());
+        memberMapper.delete(Wrappers.<GroupMember>lambdaQuery().eq(GroupMember::getGroupId, id));
+        groupMapper.deleteById(id);
+        configService.refresh();
+        routeEngine.resetPolling(id);
+        return ApiResponse.ok();
+    }
+
+    /** 令牌授权分组列表里移除本分组编码；清空后等价于「全部分组」。 */
+    private void cascadeRemoveAllowedGroup(String groupCode) {
+        for (ApiToken token : tokenMapper.selectList(Wrappers.<ApiToken>lambdaQuery()
+                .isNotNull(ApiToken::getAllowedGroups))) {
+            String allowed = token.getAllowedGroups();
+            if (allowed == null || allowed.isBlank() || !allowed.contains(groupCode)) {
+                continue;
+            }
+            List<String> codes = com.drawbridge.common.JsonUtil.readTree(allowed).valueStream()
+                    .filter(com.fasterxml.jackson.databind.JsonNode::isTextual)
+                    .map(com.fasterxml.jackson.databind.JsonNode::asText)
+                    .filter(c -> !c.equals(groupCode))
+                    .collect(java.util.stream.Collectors.toList());
+            token.setAllowedGroups(codes.isEmpty() ? null : com.drawbridge.common.JsonUtil.toJson(codes));
+            token.setUpdatedAt(LocalDateTime.now());
+            tokenMapper.updateById(token);
+        }
     }
 
     @GetMapping("/{id}")

@@ -14,14 +14,14 @@ class SubmitPayloadTest {
     @Test
     void parseFullPayload() {
         SubmitPayload p = SubmitPayload.parse("""
-                {"model":"image2.5","prompt":"一只猫","n":2,"size":"1024x1024",
+                {"model":"image2.5","prompt":"一只猫","n":1,"resolution":"2k",
                  "aspectRatio":"3:2",
                  "images":["https://a.com/1.png","https://b.com/2.png"],
                  "options":{"output_format":"webp","quality":"high"}}
                 """);
         assertEquals("一只猫", p.prompt());
-        assertEquals(2, p.n());
-        assertEquals("1024x1024", p.size());
+        assertEquals(1, p.n());
+        assertEquals("2k", p.resolution());
         assertEquals("3:2", p.aspectRatio());
         assertEquals(2, p.images().size());
         assertEquals("high", p.options().get("quality"));
@@ -32,7 +32,7 @@ class SubmitPayloadTest {
         SubmitPayload p = SubmitPayload.parse("{\"prompt\":\"hi\"}");
         assertEquals("hi", p.prompt());
         assertEquals(1, p.n());
-        assertNull(p.size());
+        assertNull(p.resolution());
         assertTrue(p.images().isEmpty());
         assertTrue(p.options().isEmpty());
     }

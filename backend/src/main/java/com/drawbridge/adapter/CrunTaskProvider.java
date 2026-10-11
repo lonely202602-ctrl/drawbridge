@@ -13,8 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 协议族④：Crun 私有任务协议（x-api-key 鉴权，{code,message,data} 壳）。
@@ -26,8 +24,9 @@ import java.util.regex.Pattern;
 @Component
 public class CrunTaskProvider implements ImageProvider {
 
-    private static final Pattern SIZE = Pattern.compile("^(\\d{3,5})x(\\d{3,5})$");
-    private static final Set<String> RESERVED_INPUT = Set.of("modelVariant", "prompt", "imgUrls");
+    /** resolution/aspect_ratio 是网关契约键，由网关直译，options 不许绕过 */
+    private static final Set<String> RESERVED_INPUT = Set.of("modelVariant", "prompt", "imgUrls",
+            "resolution", "aspect_ratio", "aspectRatio");
 
     private final UpstreamHttp http;
 
@@ -156,6 +155,10 @@ public class CrunTaskProvider implements ImageProvider {
         }
         JsonNode data = node.path("data");
         String status = data.path("status").asText("");
+        // 官方状态枚举之外的取消态也认终态（statusMap 可再覆盖），不认就只会空转到任务超时
+        if ("cancelled".equals(status) || "canceled".equals(status)) {
+            return PollOutcome.failed("Crun 任务已取消", result.body());
+        }
         return switch (status) {
             case "success" -> {
                 List<String> urls = new ArrayList<>();
@@ -199,12 +202,12 @@ public class CrunTaskProvider implements ImageProvider {
             ArrayNode urls = input.putArray("img_urls");
             cmd.imageUrls().forEach(urls::add);
         }
+        // 分辨率契约：Crun 原生认「比例+档位」，原样直译（控制器已归一化默认 1:1 / 1k）
         if (cmd.aspectRatio() != null && !cmd.aspectRatio().isBlank()) {
             input.put("aspect_ratio", cmd.aspectRatio());
         }
-        String resolution = resolutionOf(cmd.size());
-        if (resolution != null) {
-            input.put("resolution", resolution);
+        if (cmd.resolution() != null && !cmd.resolution().isBlank()) {
+            input.put("resolution", cmd.resolution());
         }
         if (cmd.options() != null) {
             for (Map.Entry<String, Object> e : cmd.options().entrySet()) {
@@ -217,22 +220,6 @@ public class CrunTaskProvider implements ImageProvider {
         body.put("model", cmd.upstreamModel());
         body.set("input", input);
         return body;
-    }
-
-    /** size（WxH）→ Crun resolution：1k/2k/4k（长边 4096+ 为 4k，2048+ 为 2k）。 */
-    private String resolutionOf(String size) {
-        if (size == null || size.isBlank()) {
-            return null;
-        }
-        Matcher m = SIZE.matcher(size.trim());
-        if (!m.matches()) {
-            return null;
-        }
-        int longSide = Math.max(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)));
-        if (longSide >= 4096) {
-            return "4k";
-        }
-        return longSide >= 2048 ? "2k" : "1k";
     }
 
     private Map<String, String> authHeaders(ChannelConfigService.ChannelRuntime rt) {

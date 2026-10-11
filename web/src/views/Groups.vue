@@ -7,18 +7,19 @@
            @dblclick="openEditor(g)">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
           <b style="font-size: 17px">{{ g.groupCode }}</b>
-          <div>
-            <el-tag v-if="g.enabled !== 1" type="info" size="small" style="margin-right: 6px">已停用</el-tag>
-            <el-dropdown trigger="click" @command="cmd => groupMenu(cmd, g)">
-              <el-button link>···</el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="editor">管理成员</el-dropdown-item>
-                  <el-dropdown-item command="edit">编辑信息</el-dropdown-item>
-                  <el-dropdown-item command="toggle" divided>{{ g.enabled === 1 ? '停用分组' : '启用分组' }}</el-dropdown-item>
-                </el-dropdown-menu>
+          <div style="display: flex; align-items: center; gap: 6px">
+            <XDropdown>
+              <template #trigger>
+                <button class="btn ghost sm" style="padding: 4px 10px" title="分组操作">···</button>
               </template>
-            </el-dropdown>
+              <div class="menu-item" @click="openEditor(g)">管理成员</div>
+              <div class="menu-item" @click="editForm = { id: g.id, groupCode: g.groupCode, displayName: g.displayName, remark: g.remark }; createVisible = true">编辑信息</div>
+              <hr>
+              <div v-if="g.enabled === 1" class="menu-item" @click="groupMenu('disable', g)">停用分组</div>
+              <div v-else class="menu-item" @click="groupMenu('enable', g)">启用分组</div>
+              <div class="menu-item del" @click="groupMenu('remove', g)">删除分组</div>
+            </XDropdown>
+            <span v-if="g.enabled !== 1" class="badge gray" style="margin-right: 6px">已停用</span>
           </div>
         </div>
 
@@ -35,13 +36,13 @@
             <span class="no">{{ i + 1 }}</span>
             <div class="m-main">
               <b :title="m.upstreamModel">{{ m.upstreamModel }}</b>
-              <small>{{ m.channelName }}<span v-if="m.channelStatus === 0 || m.channelStatus === 4" style="color: #b4523f"> · 渠道停用</span><span v-if="g.strategy === 'WEIGHTED'"> · 权重 {{ m.weight }}</span></small>
+              <small>{{ m.channelName }}<span v-if="m.channelStatus === 0 || m.channelStatus === 4" style="color: var(--danger)"> · 渠道停用</span><span v-if="g.strategy === 'WEIGHTED'"> · 权重 {{ m.weight }}</span></small>
             </div>
             <div class="m-ops">
-              <el-button link size="small" :disabled="i === 0" @click="moveMember(g, g.members, i, -1)">↑</el-button>
-              <el-button link size="small" :disabled="i === g.members.length - 1" @click="moveMember(g, g.members, i, 1)">↓</el-button>
-              <el-button link size="small" @click="toggleMember(g, m)">{{ m.enabled === 1 ? '停' : '启' }}</el-button>
-              <el-button link size="small" type="danger" @click="removeMember(g, m)">✕</el-button>
+              <button class="btn text sm" :disabled="i === 0" @click="moveMember(g, g.members, i, -1)">↑</button>
+              <button class="btn text sm" :disabled="i === g.members.length - 1" @click="moveMember(g, g.members, i, 1)">↓</button>
+              <button class="btn text sm" @click="toggleMember(g, m)">{{ m.enabled === 1 ? '停' : '启' }}</button>
+              <button class="btn text dangertext sm" @click="removeMember(g, m)">✕</button>
             </div>
           </div>
         </TransitionGroup>
@@ -49,12 +50,12 @@
           还没有成员——双击卡片去添加
         </div>
 
-        <el-button round style="width: 100%; margin-top: 6px" @click="openEditor(g)">＋ 添加成员</el-button>
+        <button class="btn ghost block" style="margin-top: 6px" @click="openEditor(g)">＋ 添加成员</button>
         <div class="hint" style="text-align: center; margin-top: 6px">双击卡片打开成员编辑器（可手拖排序）</div>
       </div>
 
       <div class="db-card zoom-in" style="display: flex; align-items: center; justify-content: center; min-height: 120px;
-           cursor: pointer; color: #4a7c59; flex-direction: column; gap: 6px; border: 2px dashed #c2d6c8"
+           cursor: pointer; color: var(--accent); flex-direction: column; gap: 6px; border: 2px dashed #c2d6c8"
            @click="createVisible = true">
         <div style="font-size: 26px">＋</div>
         <div>新建分组</div>
@@ -62,8 +63,7 @@
     </div>
 
     <!-- 成员编辑器（参考 octopus：左可添加 / 右已选，手拖排序） -->
-    <el-dialog v-model="editorVisible" width="1060px" top="5vh" destroy-on-close
-               :title="`编辑分组 - ${editor?.groupCode}`">
+    <XDialog v-model="editorVisible" :width="'1060px'" :title="`编辑分组 - ${editor?.groupCode || ''}`">
       <template v-if="editor">
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap">
           <span style="font-weight: 600">路由策略</span>
@@ -83,7 +83,7 @@
           <div class="editor-panel">
             <div class="panel-head">
               <span>添加模型</span>
-              <el-input v-model="search" size="small" placeholder="搜索模型" clearable style="width: 150px" />
+              <input v-model="search" class="input" placeholder="搜索模型" style="width: 150px; padding: 6px 12px" />
             </div>
             <div class="panel-body">
               <div v-for="ch in editorModels" :key="ch.channelId" style="margin-bottom: 8px">
@@ -112,7 +112,7 @@
           <div class="editor-panel">
             <div class="panel-head">
               <span>已选成员（{{ editor.members.length }}）</span>
-              <el-button link type="danger" :disabled="!editor.members.length" @click="clearMembers">清空</el-button>
+              <button class="btn text dangertext sm" :disabled="!editor.members.length" @click="clearMembers">清空</button>
             </div>
             <div class="panel-body">
               <TransitionGroup name="member">
@@ -128,11 +128,11 @@
                   <span class="drag-handle" title="拖动排序">⠿</span>
                   <div class="m-main">
                     <b style="white-space: normal; word-break: break-all">{{ m.upstreamModel }}</b>
-                    <small>{{ m.channelName }}<span v-if="m.channelStatus === 0 || m.channelStatus === 4" style="color: #b4523f"> · 渠道停用</span><span v-if="editor.strategy === 'WEIGHTED'"> · 权重 {{ m.weight }}</span></small>
+                    <small>{{ m.channelName }}<span v-if="m.channelStatus === 0 || m.channelStatus === 4" style="color: var(--danger)"> · 渠道停用</span><span v-if="editor.strategy === 'WEIGHTED'"> · 权重 {{ m.weight }}</span></small>
                   </div>
                   <div class="m-ops">
-                    <el-button link size="small" @click="toggleMember(editor, m)">{{ m.enabled === 1 ? '停' : '启' }}</el-button>
-                    <el-button link size="small" type="danger" @click="removeMember(editor, m)">✕</el-button>
+                    <button class="btn text sm" @click="toggleMember(editor, m)">{{ m.enabled === 1 ? '停' : '启' }}</button>
+                    <button class="btn text dangertext sm" @click="removeMember(editor, m)">✕</button>
                   </div>
                 </div>
               </TransitionGroup>
@@ -144,31 +144,36 @@
         </div>
 
         <div style="text-align: center; margin-top: 16px">
-          <el-button round style="width: 200px" @click="editorVisible = false">完成（改动已即时生效）</el-button>
+          <button class="btn ghost" style="width: 220px" @click="editorVisible = false">完成（改动已即时生效）</button>
         </div>
       </template>
-    </el-dialog>
+    </XDialog>
 
     <!-- 新建/编辑分组 -->
-    <el-dialog v-model="createVisible" :title="editForm.id ? '编辑分组' : '新建分组'" width="440px">
-      <el-form label-width="100px">
-        <el-form-item label="分组编码">
-          <el-input v-model="editForm.groupCode" placeholder="业务方调用的 model 名，如 image2.5" />
-          <div v-if="editForm.id" class="form-hint" style="width: 100%; font-size: 12px; color: #999; line-height: 1.6; margin-top: 4px">
-            修改编码后，业务方需改用新 model 名调用（已限分组的令牌会自动同步）
-          </div>
-        </el-form-item>
-        <el-form-item label="显示名"><el-input v-model="editForm.displayName" placeholder="可选" /></el-form-item>
-        <el-form-item label="备注"><el-input v-model="editForm.remark" /></el-form-item>
-        <el-button type="primary" round style="width: 100%" @click="saveGroup">保存</el-button>
-      </el-form>
-    </el-dialog>
+    <XDialog v-model="createVisible" :title="editForm.id ? '编辑分组' : '新建分组'" width="440px">
+      <div class="field">
+        <label>分组编码</label>
+        <input v-model="editForm.groupCode" class="input" placeholder="业务方调用的 model 名，如 image2.5" />
+        <div v-if="editForm.id" class="form-hint">
+          修改编码后，业务方需改用新 model 名调用（已限分组的令牌会自动同步）
+        </div>
+      </div>
+      <div class="field"><label>显示名</label>
+        <input v-model="editForm.displayName" class="input" placeholder="可选" /></div>
+      <div class="field"><label>备注</label>
+        <input v-model="editForm.remark" class="input" /></div>
+      <template #footer>
+        <button class="btn primary block" @click="saveGroup">保存</button>
+      </template>
+    </XDialog>
   </div>
 </template>
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { toast, confirm } from '../ui'
+import XDialog from '../components/XDialog.vue'
+import XDropdown from '../components/XDropdown.vue'
 import api, { unwrap } from '../api'
 
 const strategies = [
@@ -188,7 +193,6 @@ const editorModels = ref([])   // [{channelId, name, open, models:[{modelCode, a
 const search = ref('')
 const dragIndex = ref(-1)
 
-const protoLabel = v => ({ OPENAI_IMAGES_SYNC: 'OpenAI 同步', OPENAI_ASYNC_TASK: 'OpenAI 异步', CRUN_TASK: 'Crun', VOLCANO_ARK: '火山方舟' }[v] || v)
 const strategyLabel = v => strategies.find(s => s.value === v)?.label || '按成员顺序故障转移'
 const strategyHint = v => ({
   FAILOVER: '按序号顺序：1 号优先，失败才轮到下一成员',
@@ -205,6 +209,33 @@ async function load() {
     const detail = await unwrap(api.get(`/admin/groups/${g.id}`))
     groups.value.push({ ...g, displayName: detail.displayName, remark: detail.remark, members: detail.members })
   }
+}
+
+// ---------------- 停用 / 启用 / 删除 ----------------
+async function groupMenu(cmd, g) {
+  if (cmd === 'disable') {
+    const ok = await confirm({
+      title: '停用分组',
+      message: `停用分组「${g.groupCode}」后业务方将无法调用该模型，确认？`,
+      danger: false
+    })
+    if (!ok) return
+    await unwrap(api.post(`/admin/groups/${g.id}/disable`))
+    toast(`分组「${g.groupCode}」已停用`)
+  } else if (cmd === 'enable') {
+    await unwrap(api.post(`/admin/groups/${g.id}/enable`))
+    toast(`分组「${g.groupCode}」已启用`)
+  } else if (cmd === 'remove') {
+    const ok = await confirm({
+      title: '删除分组',
+      message: `删除分组「${g.groupCode}」会一并移除它的成员条目，且不可恢复（历史任务不受影响；有在途任务时会被拒绝）。确认删除？`,
+      danger: true, confirmText: '删除'
+    })
+    if (!ok) return
+    await unwrap(api.delete(`/admin/groups/${g.id}`))
+    toast(`分组「${g.groupCode}」已删除`)
+  }
+  await load()
 }
 
 // ---------------- 编辑器 ----------------
@@ -259,7 +290,7 @@ async function quickAdd(ch, m) {
     sortOrder: g.members.length,
     enabled: 1
   })
-  ElMessage.success(`已添加 ${m.modelCode}`)
+  toast(`已添加 ${m.modelCode}`)
 }
 
 async function removeMember(g, m) {
@@ -279,12 +310,17 @@ async function toggleMember(g, m) {
 
 async function clearMembers() {
   const g = editor.value
-  await ElMessageBox.confirm(`清空分组「${g.groupCode}」的全部成员？业务方将无法调用。`, '提示', { type: 'warning' })
+  const ok = await confirm({
+    title: '清空成员',
+    message: `清空分组「${g.groupCode}」的全部成员？业务方将无法调用。`,
+    danger: true, confirmText: '清空'
+  })
+  if (!ok) return
   for (const m of [...g.members]) {
     await unwrap(api.delete(`/admin/groups/${g.id}/members/${m.id}`))
   }
   g.members = []
-  ElMessage.success('已清空')
+  toast('已清空')
 }
 
 // ---------------- 排序：手拖 + 按钮（本地即时更新 + 静默持久化） ----------------
@@ -323,12 +359,12 @@ async function setStrategy(g, s) {
     groupCode: g.groupCode, displayName: g.displayName, strategy: s.value, remark: g.remark
   }))
   g.strategy = s.value
-  ElMessage.success(`「${g.groupCode}」已切换为${s.label}`)
+  toast(`「${g.groupCode}」已切换为${s.label}`)
 }
 
 async function saveGroup() {
   if (!editForm.value.groupCode.trim()) {
-    ElMessage.warning('分组编码不能为空')
+    toast('分组编码不能为空', 'warn')
     return
   }
   if (editForm.value.id) {
@@ -344,22 +380,8 @@ async function saveGroup() {
     }))
   }
   createVisible.value = false
-  ElMessage.success('已保存')
+  toast('已保存')
   await load()
-}
-
-async function groupMenu(cmd, g) {
-  if (cmd === 'editor') openEditor(g)
-  else if (cmd === 'edit') {
-    editForm.value = { id: g.id, groupCode: g.groupCode, displayName: g.displayName, remark: g.remark }
-    createVisible.value = true
-  } else if (cmd === 'toggle') {
-    if (g.enabled === 1) {
-      await ElMessageBox.confirm(`停用分组「${g.groupCode}」后业务方将无法调用该模型，确认？`, '提示', { type: 'warning' })
-    }
-    await unwrap(api.delete(`/admin/groups/${g.id}`))
-    await load()
-  }
 }
 
 onMounted(load)
@@ -372,62 +394,34 @@ onMounted(load)
 .member-list {
   flex: 1 1 auto;
   min-height: 0;
-  max-height: 236px;
+  max-height: 300px;
   overflow-y: auto;
-  padding-right: 2px;
 }
-.member-list::-webkit-scrollbar { width: 4px; }
-.member-list::-webkit-scrollbar-thumb { background: #ddd9cc; border-radius: 4px; }
-.member-list::-webkit-scrollbar-track { background: transparent; }
 
-/* 编辑器双栏 */
-.editor-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
+/* 编辑器面板 */
+.editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .editor-panel {
-  background: #faf9f5;
-  border: 1px solid #eeede6;
-  border-radius: 14px;
-  overflow: hidden;
+  border: 1px solid var(--line); border-radius: 14px; background: #fcfbf8;
+  display: flex; flex-direction: column; height: 54vh;
 }
 .panel-head {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 14px;
-  font-weight: 600;
-  border-bottom: 1px solid #eeede6;
-  background: #fff;
+  padding: 10px 14px; border-bottom: 1px solid var(--line); font-weight: 600; font-size: 13px;
 }
-.panel-body { height: 54vh; overflow: auto; padding: 10px 12px; position: relative; }
-/* 离场动画的行绝对定位时，固定在本面板内（不飞出弹窗） */
-.panel-body > div { position: relative; }
+.panel-body { flex: 1; overflow: auto; padding: 10px 12px; }
 .ch-row {
-  display: flex; align-items: center;
-  padding: 8px 10px; border-radius: 10px;
-  cursor: pointer; user-select: none;
+  display: flex; align-items: center; padding: 6px 8px; cursor: pointer;
+  border-radius: 8px; font-size: 13px;
 }
-.ch-row:hover { background: #f1efe8; }
-.ch-row .arrow {
-  display: inline-block; transition: transform 0.2s ease;
-  margin-right: 6px; color: #9a9a90;
-}
+.ch-row:hover { background: #f4f3ec; }
+.ch-row .arrow { display: inline-block; transition: transform 0.2s; color: var(--ink2); font-size: 11px; width: 14px; }
 .model-item {
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  padding: 8px 12px; margin: 2px 0 2px 18px;
-  border-radius: 10px; cursor: pointer;
-  transition: background 0.15s ease;
+  display: flex; justify-content: space-between; gap: 8px; align-items: center;
+  padding: 6px 10px 6px 30px; border-radius: 8px; cursor: pointer; font-size: 12.5px;
 }
-.model-item:hover { background: #ecf2ee; }
-.model-item.added { opacity: 0.45; cursor: not-allowed; }
-.model-item.added:hover { background: transparent; }
-
-/* 成员行：弹窗窄面板内允许换行，卡片墙上单行省略（全局 style.css 的 nowrap+ellipsis） */
-.member-row { cursor: grab; }
-.member-row:active { cursor: grabbing; }
-.member-row.dragging { opacity: 0.4; border-style: dashed; }
-.drag-handle { color: #c0c0b6; cursor: grab; font-size: 13px; letter-spacing: 1px; }
-.editor-grid .member-row .m-main b { white-space: normal; word-break: break-all; line-height: 1.4; }
+.model-item:hover { background: var(--accent-wash); }
+.model-item.added { color: var(--ink2); cursor: not-allowed; }
+.model-item.added:hover { background: none; }
 
 /* 列表变动动画 */
 .member-move { transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1); }
@@ -441,4 +435,8 @@ onMounted(load)
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: none; }
 }
+
+/* 危险操作菜单项（删除分组） */
+.menu-item.del { color: var(--danger); }
+.menu-item.del:hover { background: var(--danger-wash); }
 </style>

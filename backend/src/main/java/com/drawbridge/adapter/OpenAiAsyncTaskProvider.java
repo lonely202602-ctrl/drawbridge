@@ -25,7 +25,7 @@ import java.util.Set;
 public class OpenAiAsyncTaskProvider implements ImageProvider {
 
     private static final Set<String> RESERVED = Set.of(
-            "model", "prompt", "n", "size", "image", "images", "modelVariant");
+            "model", "prompt", "n", "size", "resolution", "aspectRatio", "image", "images", "modelVariant");
 
     private final UpstreamHttp http;
 
@@ -85,10 +85,21 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
         return switch (mapped) {
             case "succeeded" -> {
                 List<String> urls = collectUrls(node, field(rt, "urlField"));
+                boolean inline = false;
                 if (urls.isEmpty()) {
-                    yield PollOutcome.failed("上游任务成功但未解析到结果 URL", result.body());
+                    // 部分模型任务成功但只回 b64_json：转 data URI 透传收下（纯网关不落盘，业务方自行转存），
+                    // 不再判"成功但未解析到 URL"把已付费的图丢掉
+                    for (JsonNode b : Pointer.resolveAll(node, "data[*].b64_json")) {
+                        if (b.isTextual() && !b.asText().isBlank()) {
+                            urls.add("data:image/png;base64," + b.asText());
+                            inline = true;
+                        }
+                    }
                 }
-                yield PollOutcome.succeeded(urls, false, result.body(), null);
+                if (urls.isEmpty()) {
+                    yield PollOutcome.failed("上游任务成功但未解析到结果 URL/b64", result.body());
+                }
+                yield PollOutcome.succeeded(urls, inline, result.body(), null);
             }
             case "failed" -> PollOutcome.failed(failMessage(node), result.body());
             default -> PollOutcome.running(result.body());
@@ -105,9 +116,8 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
         if (cmd.n() > 0 && cmd.n() != 1) {
             body.put("n", cmd.n());
         }
-        if (cmd.size() != null && !cmd.size().isBlank()) {
-            body.put("size", cmd.size());
-        }
+        // 分辨率契约：比例+档位 → 方向归档成上游必然接受的三档尺寸（缺省=方图，永远给确定值）
+        body.put("size", Resolutions.openAiSize(cmd.aspectRatio(), cmd.resolution(), rt.extra()));
         RefImages.applyTo(body, cmd.imageUrls(), RefImages.uuapiEdits(rt, cmd.imageUrls()));
         if (cmd.options() != null) {
             for (Map.Entry<String, Object> e : cmd.options().entrySet()) {

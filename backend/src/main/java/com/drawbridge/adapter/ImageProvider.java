@@ -32,12 +32,12 @@ public interface ImageProvider {
     /** 组装发上游的请求体（任务详情存档展示用，与 submit 内部实际发送体一致）。 */
     String buildRequestJson(SubmitCommand cmd, ChannelConfigService.ChannelRuntime rt);
 
-    /** 提交命令：业务参数 + 该成员映射的上游模型名。 */
+    /** 提交命令：业务参数 + 该成员映射的上游模型名。resolution=清晰度档位（1k/2k/4k），aspectRatio=方向意图 W:H。 */
     record SubmitCommand(
             String upstreamModel,
             String prompt,
             int n,
-            String size,
+            String resolution,
             String aspectRatio,
             List<String> imageUrls,
             Map<String, Object> options,

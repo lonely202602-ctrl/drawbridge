@@ -72,7 +72,15 @@ public class RouteEngine {
             }
             available.add(new Candidate(channel, member));
         }
-        List<Candidate> ordered = order(strategy, available, group.getId());
+        // 半开渠道垫底：探测期不与正常渠道平起平坐，病没好时先让它接最少的量（各分组内仍按策略排序）
+        List<Candidate> hot = new ArrayList<>();
+        List<Candidate> probing = new ArrayList<>();
+        for (Candidate c : available) {
+            (healthTracker.healthState(c.channel().getId()) == ChannelHealthTracker.HALF_OPEN
+                    ? probing : hot).add(c);
+        }
+        List<Candidate> ordered = new ArrayList<>(order(strategy, hot, group.getId()));
+        ordered.addAll(order(strategy, probing, group.getId()));
         if (strategy == RouteStrategy.POLLING && !ordered.isEmpty()) {
             lastServedByGroup.put(group.getId(), ordered.getFirst().member().getId());
         }
