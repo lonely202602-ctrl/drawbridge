@@ -65,7 +65,8 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
                 boolean inline = syncUrls.stream().anyMatch(u -> u.startsWith("data:"));
                 return new SubmitOutcome.Completed(syncUrls, inline, result.body(), null);
             }
-            throw new UpstreamCallException(UpstreamErrorKind.UNKNOWN,
+            // 2xx 但没有任务号：上游可能已受理（代理回垃圾），不换渠道重发（防重复扣费）
+            throw new UpstreamCallException(UpstreamErrorKind.BAD_RESPONSE,
                     "异步上游受理但未解析到任务号（HTTP " + result.status() + "）", result.status());
         }
         return new SubmitOutcome.Accepted(taskId, result.body());
@@ -88,10 +89,10 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
                 boolean inline = false;
                 if (urls.isEmpty()) {
                     // 部分模型任务成功但只回 b64_json：转 data URI 透传收下（纯网关不落盘，业务方自行转存），
-                    // 不再判"成功但未解析到 URL"把已付费的图丢掉
+                    // 不再判"成功但未解析到 URL"把已付费的图丢掉；格式按魔数嗅探，不盲拼 png
                     for (JsonNode b : Pointer.resolveAll(node, "data[*].b64_json")) {
                         if (b.isTextual() && !b.asText().isBlank()) {
-                            urls.add("data:image/png;base64," + b.asText());
+                            urls.add("data:image/" + B64Mime.sniff(b.asText()) + ";base64," + b.asText());
                             inline = true;
                         }
                     }
@@ -116,8 +117,12 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
         if (cmd.n() > 0 && cmd.n() != 1) {
             body.put("n", cmd.n());
         }
-        // 分辨率契约：比例+档位 → 方向归档成上游必然接受的三档尺寸（缺省=方图，永远给确定值）
-        body.put("size", Resolutions.openAiSize(cmd.aspectRatio(), cmd.resolution(), rt.extra()));
+        // 分辨率契约：业务方显式传了比例才发 size（没传不带=模型用自己的默认，修图不裁方图）；
+        // 旧版 size（deprecated）原样透传优先
+        String size = Resolutions.openAiSize(cmd.aspectRatio(), cmd.resolution(), cmd.legacySize(), rt.extra());
+        if (size != null && !size.isBlank()) {
+            body.put("size", size);
+        }
         RefImages.applyTo(body, cmd.imageUrls(), RefImages.uuapiEdits(rt, cmd.imageUrls()));
         if (cmd.options() != null) {
             for (Map.Entry<String, Object> e : cmd.options().entrySet()) {
@@ -172,14 +177,15 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
         return urls;
     }
 
-    /** 识别同步生图形状的响应（data[].url 或 data[].b64_json）；b64 按 png 转 data URI。 */
+    /** 识别同步生图形状的响应（data[].url 或 data[].b64_json）；b64 按魔数嗅探转 data URI。 */
     private List<String> collectSyncImageResults(JsonNode node) {
         List<String> urls = new ArrayList<>();
         for (JsonNode item : node.path("data")) {
             if (item.hasNonNull("url") && !item.path("url").asText().isBlank()) {
                 urls.add(item.get("url").asText());
             } else if (item.hasNonNull("b64_json") && !item.path("b64_json").asText().isBlank()) {
-                urls.add("data:image/png;base64," + item.get("b64_json").asText());
+                urls.add("data:image/" + B64Mime.sniff(item.get("b64_json").asText())
+                        + ";base64," + item.get("b64_json").asText());
             }
         }
         return urls;

@@ -21,6 +21,8 @@ public final class OpenApiDtos {
             Integer n,
             String resolution,
             String aspectRatio,
+            /** 旧版尺寸（deprecated，如 1536x1024）：OpenAI 系原样透传、Crun 系换算；新接入请用 aspectRatio+resolution */
+            String size,
             /** OpenAI 习惯的单张参考图：网关归一化并入 images 首位，业务方两个都行 */
             String image,
             List<String> images,

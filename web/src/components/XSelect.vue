@@ -84,7 +84,13 @@ function onDoc(e) {
   if (root.value && !root.value.contains(e.target)
       && !(e.target.closest && e.target.closest('.xselect-menu'))) open.value = false
 }
-function onScroll() { if (open.value) open.value = false }
+function onScroll(e) {
+  if (!open.value) return
+  // 菜单自身限高后的内部滚动（选项多时）不算"页面滚动"，不关；
+  // 否则分组一多，后面的选项永远选不到
+  if (e.target && e.target.closest && e.target.closest('.xselect-menu')) return
+  open.value = false
+}
 onMounted(() => {
   document.addEventListener('click', onDoc)
   window.addEventListener('scroll', onScroll, true)

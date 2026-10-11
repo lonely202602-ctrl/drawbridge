@@ -104,6 +104,40 @@ class ChannelHealthTrackerTest {
     }
 
     @Test
+    void halfOpenIdleExpiresSoRouteStopsBottomRanking() throws Exception {
+        tripChannel(1L);
+        assertFalse(tracker.isAvailable(1L));
+        promoteToHalfOpen(1L);
+        assertTrue(tracker.isAvailable(1L));
+        assertEquals(ChannelHealthTracker.HALF_OPEN, tracker.healthState(1L));
+        // 刚进半开：还没停滞（默认阈值 120s），路由应继续垫底
+        assertFalse(tracker.halfOpenExpired(1L));
+        // 拨快 halfOpenSince 两分钟前 → 停滞，路由放它回正常排队位置
+        var field = ChannelHealthTracker.class.getDeclaredField("windows");
+        field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        var windows = (java.util.concurrent.ConcurrentHashMap<Long, ?>) field.get(tracker);
+        Object window = windows.get(1L);
+        var since = window.getClass().getDeclaredField("halfOpenSince");
+        since.setAccessible(true);
+        since.setLong(window, System.currentTimeMillis() - 121_000);
+        assertTrue(tracker.halfOpenExpired(1L), "停滞超阈值的半开应被豁免垫底");
+    }
+
+    /** 把 openUntil 拨到过去并触发一次 isAvailable，使渠道进入半开（熔断时长 60s 无法真实等待）。 */
+    private void promoteToHalfOpen(long channelId) throws Exception {
+        var field = ChannelHealthTracker.class.getDeclaredField("windows");
+        field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        var windows = (java.util.concurrent.ConcurrentHashMap<Long, ?>) field.get(tracker);
+        Object window = windows.get(channelId);
+        var openUntil = window.getClass().getDeclaredField("openUntil");
+        openUntil.setAccessible(true);
+        openUntil.setLong(window, System.currentTimeMillis() - 1);
+        assertTrue(tracker.isAvailable(channelId));
+    }
+
+    @Test
     void channelsAreIsolated() {
         tripChannel(1L);
         assertFalse(tracker.isAvailable(1L));

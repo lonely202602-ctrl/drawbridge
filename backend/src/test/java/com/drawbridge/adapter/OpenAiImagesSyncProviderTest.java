@@ -47,7 +47,7 @@ class OpenAiImagesSyncProviderTest {
 
     private ImageProvider.SubmitCommand cmd() {
         return new ImageProvider.SubmitCommand("gpt-image-2.5", "a cat", 1,
-                "1024x1024", null, null, null, 10_000);
+                null, null, null, null, null, 10_000);
     }
 
     @Test
@@ -120,7 +120,7 @@ class OpenAiImagesSyncProviderTest {
     @Test
     void buildRequestRespectsReservedKeysAndPassthrough() {
         ImageProvider.SubmitCommand cmd = new ImageProvider.SubmitCommand("m1", "p", 2,
-                "1k", "16:9", List.of("https://r.png"),
+                "1k", "16:9", null, List.of("https://r.png"),
                 Map.of("quality", "high", "model", "HACK", "prompt", "HACK", "modelVariant", "x",
                         "size", "HACK", "resolution", "HACK", "aspectRatio", "HACK"),
                 10_000);
@@ -138,20 +138,47 @@ class OpenAiImagesSyncProviderTest {
 
     @Test
     void resolutionContractDirectionArchiveAndSizeMap() {
-        // 方图缺省 / 竖版 / sizeMap 覆盖
-        assertTrue(provider.buildRequestJson(cmd(), rt).contains("\"size\":\"1024x1024\""),
-                "缺省比例=方图 1024x1024");
+        // 没传比例 → 不带 size（模型用自己的默认，修图不裁方图）
+        String noRatio = provider.buildRequestJson(cmd(), rt);
+        assertFalse(noRatio.contains("\"size\""), noRatio);
+        // 竖版归档
         ImageProvider.SubmitCommand portrait = new ImageProvider.SubmitCommand(
-                "m", "p", 1, "4k", "9:16", null, null, 10_000);
+                "m", "p", 1, "4k", "9:16", null, null, null, 10_000);
         assertTrue(provider.buildRequestJson(portrait, rt).contains("\"size\":\"1024x1536\""),
                 "竖版归档 1024x1536（4k 在该族降级为最好一档）");
+        // sizeMap 字符串 = 该档位整表覆盖（管理员显式配置的固定尺寸，横竖一律此值）
         ChannelConfigService.ChannelRuntime mapped = new ChannelConfigService.ChannelRuntime(
                 wm.baseUrl() + "/v1", "k", Map.of(),
                 Map.of("sizeMap", Map.of("2k", "2048x2048")));
         ImageProvider.SubmitCommand tier2k = new ImageProvider.SubmitCommand(
-                "m", "p", 1, "2k", "16:9", null, null, 10_000);
+                "m", "p", 1, "2k", "16:9", null, null, null, 10_000);
         assertTrue(provider.buildRequestJson(tier2k, mapped).contains("\"size\":\"2048x2048\""),
-                "渠道 sizeMap 按档位整表覆盖");
+                "渠道 sizeMap 字符串=整表覆盖");
+        // sizeMap 对象 = 按方向配（横竖不反的完整兑现）
+        ChannelConfigService.ChannelRuntime byDir = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl() + "/v1", "k", Map.of(),
+                Map.of("sizeMap", Map.of("2k", Map.of(
+                        "landscape", "2048x1152", "portrait", "1152x2048", "square", "2048x2048"))));
+        assertTrue(provider.buildRequestJson(tier2k, byDir).contains("\"size\":\"2048x1152\""),
+                "sizeMap 按方向：16:9 → landscape");
+        ImageProvider.SubmitCommand tier2kPortrait = new ImageProvider.SubmitCommand(
+                "m", "p", 1, "2k", "9:16", null, null, null, 10_000);
+        assertTrue(provider.buildRequestJson(tier2kPortrait, byDir).contains("\"size\":\"1152x2048\""),
+                "sizeMap 按方向：9:16 → portrait");
+    }
+
+    @Test
+    void legacySizePassthroughWinsOverArchive() {
+        // 旧版 size（deprecated）：原样透传——1792x1024（dall-e-3 横版）不做有损换算
+        ImageProvider.SubmitCommand legacy = new ImageProvider.SubmitCommand(
+                "m", "p", 1, null, null, "1792x1024", null, null, 10_000);
+        assertTrue(provider.buildRequestJson(legacy, rt).contains("\"size\":\"1792x1024\""));
+        // 显式传了比例也以旧 size 为准（老调用方语义不变）
+        ImageProvider.SubmitCommand legacyWithRatio = new ImageProvider.SubmitCommand(
+                "m", "p", 1, "1k", "16:9", "1792x1024", null, null, 10_000);
+        String json = provider.buildRequestJson(legacyWithRatio, rt);
+        assertTrue(json.contains("\"size\":\"1792x1024\""), json);
+        assertFalse(json.contains("1536x1024"), json);
     }
 
     @Test
@@ -169,7 +196,7 @@ class OpenAiImagesSyncProviderTest {
         ChannelConfigService.ChannelRuntime uu = new ChannelConfigService.ChannelRuntime(
                 wm.baseUrl() + "/v1", "k", Map.of(), Map.of("refImageStyle", "uuapi"));
         ImageProvider.SubmitCommand withImgs = new ImageProvider.SubmitCommand("gpt-image-2.5", "美化", 1,
-                "1024x1024", null, List.of("https://r1.png", "https://r2.png"), null, 10_000);
+                null, null, null, List.of("https://r1.png", "https://r2.png"), null, 10_000);
 
         // 带参考图 → 打 /images/edits，参考图用 images[].image_url 包裹
         wm.stubFor(post(urlEqualTo("/v1/images/edits"))
@@ -207,7 +234,7 @@ class OpenAiImagesSyncProviderTest {
                 wm.baseUrl() + "/v1", "k", Map.of("submitPath", "/images/generations"),
                 Map.of("refImageStyle", "uuapi"));
         ImageProvider.SubmitCommand withImg = new ImageProvider.SubmitCommand("gpt-image-2.5", "美化", 1,
-                "1024x1024", null, List.of("https://r1.png"), null, 10_000);
+                null, null, null, List.of("https://r1.png"), null, 10_000);
         wm.stubFor(post(urlEqualTo("/v1/images/edits"))
                 .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"url\":\"https://x/e.png\"}]}")));
         assertInstanceOf(ImageProvider.SubmitOutcome.Completed.class, provider.submit(withImg, shadowed));
@@ -236,7 +263,7 @@ class OpenAiImagesSyncProviderTest {
 
         // 业务方显式指定 → 以业务方为准，渠道默认不覆盖
         ImageProvider.SubmitCommand explicit = new ImageProvider.SubmitCommand("m1", "p", 1,
-                null, null, null, Map.of("response_format", "b64_json"), 10_000);
+                null, null, null, null, Map.of("response_format", "b64_json"), 10_000);
         String body = provider.buildRequestJson(explicit, urlDefault);
         assertTrue(body.contains("\"response_format\":\"b64_json\""), body);
         assertFalse(body.contains("\"response_format\":\"url\""), body);

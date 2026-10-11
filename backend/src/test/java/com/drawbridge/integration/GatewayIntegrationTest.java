@@ -56,6 +56,8 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -107,6 +109,10 @@ class GatewayIntegrationTest {
     com.drawbridge.task.TaskFinisher finisher;
     @Resource
     com.drawbridge.health.ChannelHealthTracker healthTracker;
+    @Resource
+    com.drawbridge.task.SubmitChain submitChain;
+    @Resource
+    com.drawbridge.task.SubmitExecutor submitExecutor;
 
     /**
      * 任务表写库故障注入：包装真实 mapper，测试可按 SQL SET 片段定点让某次 update 抛异常
@@ -146,6 +152,26 @@ class GatewayIntegrationTest {
             if (entity == null && wrapper instanceof com.baomidou.mybatisplus.core.conditions.AbstractWrapper<?, ?, ?> aw) {
                 String sqlSet = aw.getSqlSet();
                 if (sqlSet != null && sqlSet.contains(fragment)) {
+                    taskUpdateFault = null;
+                    return error;
+                }
+            }
+            return null;
+        };
+    }
+
+    /**
+     * 定点故障"领取 UPDATE"（status: SUBMITTED→RUNNING）。领取与回退的 SET/参数高度同形，
+     * 单靠 SET 片段会撞车：判别式 = SET 带 status + 绑定参数含 SUBMITTED + WHERE 无 upstream_task_id
+     * （回退的 WHERE 带 isNull(upstream_task_id)，清扫④的 SET 不含 status）。
+     */
+    private static void faultOnClaimOnce(RuntimeException error) {
+        taskUpdateFault = (entity, wrapper) -> {
+            if (entity == null && wrapper instanceof com.baomidou.mybatisplus.core.conditions.AbstractWrapper<?, ?, ?> aw) {
+                String sqlSet = aw.getSqlSet();
+                if (sqlSet != null && sqlSet.contains("status")
+                        && aw.getParamNameValuePairs().containsValue("SUBMITTED")
+                        && !String.valueOf(aw.getSqlSegment()).contains("upstream_task_id")) {
                     taskUpdateFault = null;
                     return error;
                 }
@@ -395,6 +421,7 @@ class GatewayIntegrationTest {
         assertEquals("job_1", task.getUpstreamTaskId());
         assertEquals(ch.getId(), task.getChannelId());
         assertEquals(WM.baseUrl() + "/v1/images/generations", task.getUpstreamUrl());
+        assertNotNull(task.getLastPollAt(), "轮询过就应留下最近轮询时间（管理端详情展示轮询活性）");
         // 任务查询接口
         mvc.perform(get("/v1/images/tasks/" + taskId).header("Authorization", "Bearer " + sk))
                 .andExpect(status().isOk())
@@ -1271,7 +1298,7 @@ class GatewayIntegrationTest {
 
     // ------------------------------------------------------------------ P1 批次（2026-10-10 晚）
 
-    @org.junit.jupiter.api.DisplayName("P1-2：轮询遇 404 任务丢失——快速终态 UPSTREAM_TASK_LOST，不再空转到超时")
+    @org.junit.jupiter.api.DisplayName("修复：轮询 404 宽限——连续 4 次都 404 才判 UPSTREAM_TASK_LOST（防最终一致性抖动误杀已付费任务）")
     @Test
     void pollTaskLostFailsFast() throws Exception {
         Channel ch = seedChannel("丢任务上游", "OPENAI_ASYNC_TASK", WM.baseUrl() + "/v1", "sk-up",
@@ -1288,6 +1315,9 @@ class GatewayIntegrationTest {
         GenerateTask t = awaitTerminal(taskId);
         assertEquals("FAILED", t.getStatus());
         assertEquals("UPSTREAM_TASK_LOST", t.getErrorCode());
+        assertTrue(t.getErrorMsg().contains("连续 4 次"), t.getErrorMsg());
+        // 恰好宽限 TASK_NOT_FOUND_GRACE=4 次后终态：既不一次误杀，也不空转到生命周期超时
+        WM.verify(4, WireMock.getRequestedFor(urlEqualTo("/v1/images/jobs/j_lost")));
     }
 
     @org.junit.jupiter.api.DisplayName("P1-4：Crun 任务被取消（cancelled）——识别为失败终态，不空转")
@@ -1368,17 +1398,34 @@ class GatewayIntegrationTest {
                 .getBodyAsString();
         assertTrue(degraded.contains("\"size\":\"1536x1024\""), degraded);
 
-        // 缺省 = 方图
+        // 缺省（不传比例/档位）→ 不带 size：模型用自己的默认，修图不裁方图
         submitAndAwait(sk, "{\"model\":\"p1rs.model\",\"prompt\":\"DEFAULT-MARK\"}");
         String def = WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations")))
                 .stream().filter(r -> r.getBodyAsString().contains("DEFAULT-MARK")).findFirst().orElseThrow()
                 .getBodyAsString();
-        assertTrue(def.contains("\"size\":\"1024x1024\""), def);
+        assertFalse(def.contains("\"size\""), def);
+
+        // 旧版 size（deprecated）：原样透传不做有损换算（1792x1024 是 dall-e-3 的合法横版尺寸）
+        submitAndAwait(sk, "{\"model\":\"p1rs.model\",\"prompt\":\"LEGACY-SIZE\",\"size\":\"1792x1024\"}");
+        String legacy = WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations")))
+                .stream().filter(r -> r.getBodyAsString().contains("LEGACY-SIZE")).findFirst().orElseThrow()
+                .getBodyAsString();
+        assertTrue(legacy.contains("\"size\":\"1792x1024\""), legacy);
+        assertFalse(legacy.contains("1536x1024"), legacy);
+
+        // Crun：没传比例/档位 → 不带 aspect_ratio/resolution（不逼不支持这俩参数的模型吃 422）
+        submitAndAwait(sk, "{\"model\":\"p1rc.model\",\"prompt\":\"CRUN-BARE\"}");
+        String crunBare = WM.findAll(WireMock.postRequestedFor(urlEqualTo("/client/job/CreateTask")))
+                .stream().filter(r -> r.getBodyAsString().contains("CRUN-BARE")).findFirst().orElseThrow()
+                .getBodyAsString();
+        assertFalse(crunBare.contains("aspect_ratio"), crunBare);
+        assertFalse(crunBare.contains("resolution"), crunBare);
 
         // Crun 直译：21:9 + 2k 原样透传
         submitAndAwait(sk, "{\"model\":\"p1rc.model\",\"prompt\":\"CRUN-MARK\",\"aspectRatio\":\"21:9\",\"resolution\":\"2k\"}");
         String crunBody = WM.findAll(WireMock.postRequestedFor(urlEqualTo("/client/job/CreateTask")))
-                .get(0).getBodyAsString();
+                .stream().filter(r -> r.getBodyAsString().contains("CRUN-MARK")).findFirst().orElseThrow()
+                .getBodyAsString();
         assertTrue(crunBody.contains("\"aspect_ratio\":\"21:9\""), crunBody);
         assertTrue(crunBody.contains("\"resolution\":\"2k\""), crunBody);
 
@@ -1539,6 +1586,257 @@ class GatewayIntegrationTest {
         assertEquals("FAILED", after.getStatus(), "业务方拿不到图就该是失败，不能'成功但没图'");
         assertEquals("RESULT_TOO_LARGE", after.getErrorCode());
         assertTrue(after.getErrorMsg().contains("体积"), after.getErrorMsg());
+    }
+
+    // ------------------------------------------------------------------ 第三轮交叉测试修复（2026-10-11）
+
+    /** 直插一条 SUBMITTED 任务（绕过控制器；rerunCount/upstreamTaskId 可预置）。 */
+    private GenerateTask insertSubmittedTask(String groupCode, int rerunCount, String upstreamTaskId) {
+        GenerateTask t = new GenerateTask();
+        t.setTaskId("task_p3_" + System.nanoTime());
+        t.setTokenId(1L);
+        t.setGroupCode(groupCode);
+        t.setStatus("SUBMITTED");
+        t.setImageCount(1);
+        t.setRerunCount(rerunCount);
+        t.setUpstreamTaskId(upstreamTaskId);
+        LocalDateTime now = LocalDateTime.now();
+        t.setNextPollTime(now);
+        t.setExpiresAt(now.plusMinutes(15));
+        t.setCreatedAt(now);
+        t.setUpdatedAt(now);
+        taskMapper.insert(t);
+        return t;
+    }
+
+    @org.junit.jupiter.api.DisplayName("修复：参考图数量网关不设上限——各模型容量不同（gpt-image 系 14 张），超出由上游精确报错")
+    @Test
+    void multiReferenceImagesNoGatewayCap() throws Exception {
+        Channel ch = seedChannel("多图上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
+        seedGroup("p3imgs.model", "0.01", List.of(ch), List.of("m"));
+        String sk = seedToken(1L, "sk-p3imgs-aaaaa", "10.00", null);
+        refreshSnapshot();
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"data\":[{\"url\":\"https://cdn.result/imgs.png\"}]}")));
+
+        // 5 张参考图（超过旧网关上限 4）：网关必须放行，上游自己判断模型容量
+        StringBuilder imgs = new StringBuilder("[");
+        for (int i = 1; i <= 5; i++) {
+            if (i > 1) imgs.append(',');
+            imgs.append("\"https://cdn.ref/pic").append(i).append(".png\"");
+        }
+        imgs.append(']');
+        String resp = submitAndAwait(sk,
+                "{\"model\":\"p3imgs.model\",\"prompt\":\"x\",\"images\":" + imgs + "}");
+        assertEquals("SUCCEEDED", field(resp, "status"), "网关不得代上游限制参考图数量");
+        String body = WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations")))
+                .get(0).getBodyAsString();
+        for (int i = 1; i <= 5; i++) {
+            assertTrue(body.contains("https://cdn.ref/pic" + i + ".png"), "第 " + i + " 张参考图应原样透传");
+        }
+    }
+
+    @org.junit.jupiter.api.DisplayName("修复：删除分组时唯一授权它的令牌变 []（零权限），重建同名分组也拿不回权限")
+    @Test
+    void groupDeleteCascadesExclusiveTokenToEmptyList() throws Exception {
+        Channel ch = seedChannel("级联上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
+        ModelGroup g = seedGroup("p3casc.model", "0.01", List.of(ch), List.of("m"));
+        String sk = seedToken(1L, "sk-p3casc-aaaaa", "10.00", List.of("p3casc.model"));
+        refreshSnapshot();
+        String admin = adminToken();
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/admin/groups/" + g.getId()).header("X-Admin-Token", admin))
+                .andExpect(status().isOk());
+
+        ApiToken token = tokenMapper.selectList(null).getFirst();
+        assertEquals("[]", token.getAllowedGroups(),
+                "唯一授权被删分组的令牌必须写成 []（零权限）：null=全部分组是权限放大，保留旧值=权限漂移");
+        // 管理端列表：[] 必须能和 null（全部）区分开，否则零权限被显示成"全部"
+        mvc.perform(get("/admin/tokens").header("X-Admin-Token", admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].allowedGroups").isArray())
+                .andExpect(jsonPath("$.data[0].allowedGroups.length()").value(0));
+
+        // 重建同名分组 → 该令牌依然 403（权限不漂移）
+        mvc.perform(post("/admin/groups").header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"groupCode\":\"p3casc.model\",\"strategy\":\"FAILOVER\"}"))
+                .andExpect(status().isOk());
+        refreshSnapshot();
+        mvc.perform(post("/v1/images/tasks").header("Authorization", "Bearer " + sk)
+                        .header("Content-Type", "application/json")
+                        .content("{\"model\":\"p3casc.model\",\"prompt\":\"x\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @org.junit.jupiter.api.DisplayName("修复：令牌编辑授权分组——清空选择恢复「全部」（null 显式落库），扩宽缩减即时生效")
+    @Test
+    void tokenGroupEditClearRestoresAll() throws Exception {
+        Channel ch = seedChannel("令牌上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
+        ModelGroup g = seedGroup("p3tok.model", "0.01", List.of(ch), List.of("m"));
+        String sk = seedToken(1L, "sk-p3tok-aaaaaa", "10.00", List.of("p3tok.model"));
+        refreshSnapshot();
+        String admin = adminToken();
+        ApiToken token = tokenMapper.selectList(null).getFirst();
+
+        // 缩减为空 = 恢复「全部」：库里必须真的是 null（updateById 跳 null 字段的存量 bug 已修）
+        mvc.perform(put("/admin/tokens/" + token.getId()).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"allowedGroups\":[]}"))
+                .andExpect(status().isOk());
+        assertEquals(null, tokenMapper.selectById(token.getId()).getAllowedGroups(),
+                "清空授权必须显式写 null（=全部），不能因跳过 null 字段而保持旧值");
+
+        // 扩宽到另一个分组：正常写入
+        mvc.perform(put("/admin/tokens/" + token.getId()).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"allowedGroups\":[\"p3tok.model\",\"other.model\"]}"))
+                .andExpect(status().isOk());
+        ApiToken after = tokenMapper.selectById(token.getId());
+        assertEquals("[\"p3tok.model\",\"other.model\"]", after.getAllowedGroups());
+
+        // 管理端列表三态可区分：限定列表 → 数组；再清空 → null（前端据此显示「全部」）
+        mvc.perform(get("/admin/tokens").header("X-Admin-Token", admin))
+                .andExpect(jsonPath("$.data[0].allowedGroups.length()").value(2));
+        mvc.perform(put("/admin/tokens/" + token.getId()).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"allowedGroups\":[]}"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/admin/tokens").header("X-Admin-Token", admin))
+                .andExpect(jsonPath("$.data[0].allowedGroups").value(org.hamcrest.Matchers.nullValue()));
+
+        // 恢复「全部」后确实能调用（鉴权 canUse(null)=true 全链路）
+        refreshSnapshot();
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"data\":[{\"url\":\"https://cdn.result/tok.png\"}]}")));
+        String resp = submitAndAwait(sk, "{\"model\":\"p3tok.model\",\"prompt\":\"x\"}");
+        assertEquals("SUCCEEDED", field(resp, "status"));
+    }
+
+    @org.junit.jupiter.api.DisplayName("修复：领取 UPDATE 自身失败（连接池打满）不回退——等下轮扫描恢复，恰好提交一次")
+    @Test
+    void claimFaultDoesNotRollbackOthersTask() throws Exception {
+        Channel ch = seedChannel("领取上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
+        seedGroup("p3claim.model", "0.01", List.of(ch), List.of("m"));
+        String sk = seedToken(1L, "sk-p3claim-aaaa", "10.00", null);
+        refreshSnapshot();
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"data\":[{\"url\":\"https://cdn.result/claim.png\"}]}")));
+
+        faultOnClaimOnce(new org.springframework.dao.DataAccessResourceFailureException("连接池打满"));
+        String taskId = field(submit(sk, "{\"model\":\"p3claim.model\",\"prompt\":\"x\"}"), "taskId");
+        // 故障（Once）已解除，等扫描器把它正常跑完
+        GenerateTask t = awaitTerminal(taskId);
+        assertEquals("SUCCEEDED", t.getStatus());
+        assertEquals(1, WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations"))).size(),
+                "领取失败不回退不重跑：上游恰好被调用一次，无重复扣费");
+        assertEquals(1, t.getAttemptCount(), "只有恢复后的那一次链路记了尝试");
+        assertEquals(0, t.getRerunCount(), "领取失败路径绝不产生回退计数");
+    }
+
+    @org.junit.jupiter.api.DisplayName("修复：回退重跑超 5 次（独立列 rerun_count）判 INTERNAL_ERROR，不再热循环")
+    @Test
+    void rerunCapFailsInternalError() throws Exception {
+        Channel ch = seedChannel("重跑上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
+        seedGroup("p3cap.model", "0.01", List.of(ch), List.of("m"));
+        refreshSnapshot();
+        GenerateTask t = insertSubmittedTask("p3cap.model", 5, null);
+        faultOnSqlSetAlways("upstream_request",
+                new org.springframework.dao.DataAccessResourceFailureException("db down"));
+        submitExecutor.kick(t.getId());
+        GenerateTask after = awaitTerminal(t.getTaskId());
+        assertEquals("FAILED", after.getStatus());
+        assertEquals("INTERNAL_ERROR", after.getErrorCode());
+    }
+
+    @org.junit.jupiter.api.DisplayName("修复：回退超限但上游已受理（有任务号）的任务不判失败——保持 RUNNING 交轮询/清扫")
+    @Test
+    void rerunCapSparesAcceptedTask() throws Exception {
+        Channel ch = seedChannel("重跑上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
+        seedGroup("p3cap2.model", "0.01", List.of(ch), List.of("m"));
+        refreshSnapshot();
+        GenerateTask t = insertSubmittedTask("p3cap2.model", 5, "ct_keep_alive");
+        faultOnSqlSetAlways("upstream_request",
+                new org.springframework.dao.DataAccessResourceFailureException("db down"));
+        submitExecutor.kick(t.getId());
+        Awaitility.await().atMost(Duration.ofSeconds(3)).untilAsserted(() -> {
+            GenerateTask after = taskMapper.selectById(t.getId());
+            assertEquals("RUNNING", after.getStatus(), "上游已受理的任务超限也不能判失败");
+            assertNull(after.getErrorCode());
+        });
+    }
+
+    @org.junit.jupiter.api.DisplayName("修复：停机中断落在发请求前 → 链路中止，绝不碰上游（执行器随后安全回退）")
+    @Test
+    void shutdownInterruptBeforeRequestAbortsCleanly() throws Exception {
+        Channel ch = seedChannel("中断上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
+        seedGroup("p3int.model", "0.01", List.of(ch), List.of("m"));
+        refreshSnapshot();
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"data\":[{\"url\":\"https://cdn.result/int.png\"}]}")));
+        GenerateTask t = insertSubmittedTask("p3int.model", 0, null);
+        jdbc.update("UPDATE generate_task SET status='RUNNING' WHERE id=" + t.getId());
+
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(com.drawbridge.task.SubmissionAbortedException.class,
+                    () -> submitChain.run(t.getId()));
+        } finally {
+            Thread.interrupted(); // 清掉测试线程的中断标志，不污染后续用例
+        }
+        GenerateTask after = taskMapper.selectById(t.getId());
+        assertEquals(0, WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations"))).size(),
+                "中断后绝不向上游发请求");
+        assertNull(after.getUpstreamRequest(), "没到发送点，不应留下请求存档（重跑安全）");
+    }
+
+    @org.junit.jupiter.api.DisplayName("修复：停机中断落在已发请求之后 → SYSTEM_SHUTDOWN 诚实终态，不再打满剩余渠道")
+    @Test
+    void shutdownInterruptAfterRequestSentFailsHonestly() throws Exception {
+        Channel ch = seedChannel("中断上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-up");
+        seedGroup("p3int2.model", "0.01", List.of(ch), List.of("m"));
+        refreshSnapshot();
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200).withFixedDelay(8000)
+                        .withBody("{\"data\":[{\"url\":\"https://cdn.result/slow.png\"}]}")));
+        GenerateTask t = insertSubmittedTask("p3int2.model", 0, null);
+        jdbc.update("UPDATE generate_task SET status='RUNNING' WHERE id=" + t.getId());
+
+        Thread runner = new Thread(() -> submitChain.run(t.getId()));
+        runner.start();
+        Thread.sleep(600);   // 已进入 HTTP 等待（requestSent=true），上游可能已收到请求
+        runner.interrupt();
+        runner.join(10_000);
+        GenerateTask after = taskMapper.selectById(t.getId());
+        assertEquals("FAILED", after.getStatus());
+        assertEquals("SYSTEM_SHUTDOWN", after.getErrorCode());
+        assertTrue(after.getErrorMsg().contains("停机"), after.getErrorMsg());
+        assertEquals(1, WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations"))).size(),
+                "中断后不向后续渠道重发（上游可能已受理，重发=重复扣费）");
+    }
+
+    @org.junit.jupiter.api.DisplayName("修复：上游 2xx 但响应非 JSON → UPSTREAM_BAD_RESPONSE 终态，绝不换渠道重发（防重复扣费）")
+    @Test
+    void badResponse2xxFailsWithoutRedirect() throws Exception {
+        Channel ch1 = seedChannel("垃圾响应A", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-a");
+        Channel ch2 = seedChannel("垃圾响应B", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-b");
+        seedGroup("p3bad.model", "0.01", List.of(ch1, ch2), List.of("m1", "m2"));
+        String sk = seedToken(1L, "sk-p3bad-aaaaa", "10.00", null);
+        refreshSnapshot();
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200).withBody("<html>gateway garbage</html>")));
+
+        String taskId = field(submit(sk, "{\"model\":\"p3bad.model\",\"prompt\":\"x\"}"), "taskId");
+        GenerateTask t = awaitTerminal(taskId);
+        assertEquals("FAILED", t.getStatus());
+        assertEquals("UPSTREAM_BAD_RESPONSE", t.getErrorCode());
+        assertEquals(1, WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations"))).size(),
+                "2xx 垃圾响应绝不换渠道重发（上游可能已出图）");
     }
 
 }

@@ -12,8 +12,9 @@ import java.util.regex.Pattern;
 public final class ErrorClassifier {
 
     private static final Pattern BALANCE = Pattern.compile(
-            "insufficient_quota|insufficient.balance|quota.*exceed|exceed.*quota|billing|balance"
-                    + "|余额不足|账户.*欠费|欠费|额度.*不足|月度限额|spending limit", Pattern.CASE_INSENSITIVE);
+            "insufficient[_\\w]*quota|insufficient\\s+quota|insufficient.balance"
+                    + "|quota.*exceed|exceed.*quota|billing|balance"
+                    + "|余额不足|欠费|额度不足|额度已用尽|月度限额|spending limit", Pattern.CASE_INSENSITIVE);
     private static final Pattern CONTENT = Pattern.compile(
             "content_policy_violation|content.moderation|moderation.blocked|safety.system|policy.violation"
                     + "|内容审核|敏感内容|违规内容|审核未通过", Pattern.CASE_INSENSITIVE);
@@ -26,10 +27,15 @@ public final class ErrorClassifier {
     private static final Pattern FILE_UNSUPPORTED = Pattern.compile(
             "file type not supported|unsupported file|invalid file|文件类型不支持|不支持的文件", Pattern.CASE_INSENSITIVE);
 
+    /** 5xx 状态层的窄审核识别：只认明确判定措辞，不认子系统名——
+     *  "content moderation service unavailable" 这类 5xx 文案是服务故障，不是审核拒绝 */
+    private static final Pattern CONTENT_EXPLICIT = Pattern.compile(
+            "content_policy_violation|violates.*policy|审核未通过|违规内容", Pattern.CASE_INSENSITIVE);
+
     /** Key 有效、但该模型无权限：属模型级问题，换渠道重试而不是停用渠道 */
     private static final Pattern MODEL_PERM = Pattern.compile(
             "not authorized to access this model|access to (this )?model.*(denied|not authorized)"
-                    + "|does not have access|无权访问该模型|未开通该模型", Pattern.CASE_INSENSITIVE);
+                    + "|does not have access|do not have access|无权访问该模型|未开通该模型", Pattern.CASE_INSENSITIVE);
 
     /** 渠道当前无可用账号/容量服务此模型（如 new-api 系「无可用渠道」、uuapi「not supported by any account」）：
      *  属渠道侧容量波动，换渠道重试而不是判参数错误（修复：uuapi 没号时任务直接失败、备胎不转移）。 */
@@ -37,9 +43,11 @@ public final class ErrorClassifier {
             "not supported by any|no available channel|无可用渠道|无可用账号|无可用模型|no available model",
             Pattern.CASE_INSENSITIVE);
 
-    /** 无歧义的没米措辞（"rate limit quota exceeded" 这类限流话术不含这些词）：状态层窄识别用。 */
+    /** 无歧义的没米措辞（403/429 状态层的窄识别）：不用贪婪跨句模式，
+     *  防 "insufficient capacity … rate limit quota exceeded" 这类限流话术被误判成没米停渠道 */
     private static final Pattern BALANCE_EXPLICIT = Pattern.compile(
-            "余额不足|账户.*欠费|欠费|insufficient.?quota|insufficient.?balance",
+            "余额不足|欠费|额度不足|额度已用尽"
+                    + "|insufficient[_\\w]*quota|insufficient\\s+quota|quota is not enough",
             Pattern.CASE_INSENSITIVE);
 
     private ErrorClassifier() {
@@ -81,12 +89,20 @@ public final class ErrorClassifier {
                 // 模型级权限（Key 有效，单模型无权）：换渠道，不停渠道
                 return new UpstreamCallException(UpstreamErrorKind.MODEL_NOT_PERMITTED, message, status);
             }
+            if (CONTENT.matcher(message).find()) {
+                // 中转平台用 403 回内容拒绝：判终态，不把同一个敏感词打满所有渠道
+                return new UpstreamCallException(UpstreamErrorKind.CONTENT_REJECTED, message, status);
+            }
             return new UpstreamCallException(UpstreamErrorKind.ACCESS_FORBIDDEN, message, status);
         }
         if (status >= 500) {
             if (MODEL_UNAVAILABLE.matcher(message).find()) {
                 // new-api 系 503「无可用渠道」：容量波动不是故障，转移而不喂熔断
                 return new UpstreamCallException(UpstreamErrorKind.MODEL_UNAVAILABLE, message, status);
+            }
+            if (CONTENT_EXPLICIT.matcher(message).find()) {
+                // 5xx 带明确审核判定措辞：终态（只认判定语，"moderation service unavailable" 这类子系统故障不算）
+                return new UpstreamCallException(UpstreamErrorKind.CONTENT_REJECTED, message, status);
             }
             return new UpstreamCallException(UpstreamErrorKind.UPSTREAM_SERVER_ERROR, message, status);
         }
@@ -132,6 +148,19 @@ public final class ErrorClassifier {
         }
         if (code == 429) {
             return new UpstreamCallException(UpstreamErrorKind.RATE_LIMITED, message, code);
+        }
+        if (code == 403) {
+            // 与 OpenAI 族对齐：窄没米 → 模型权限 → 审核拒绝 → 拒绝访问（喂熔断换渠道），不判参数错误终态
+            if (BALANCE_EXPLICIT.matcher(message).find()) {
+                return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, code);
+            }
+            if (MODEL_PERM.matcher(message).find()) {
+                return new UpstreamCallException(UpstreamErrorKind.MODEL_NOT_PERMITTED, message, code);
+            }
+            if (CONTENT.matcher(message).find()) {
+                return new UpstreamCallException(UpstreamErrorKind.CONTENT_REJECTED, message, code);
+            }
+            return new UpstreamCallException(UpstreamErrorKind.ACCESS_FORBIDDEN, message, code);
         }
         if (BALANCE.matcher(message).find()) {
             return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, code);

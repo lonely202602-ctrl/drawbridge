@@ -17,6 +17,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -46,7 +47,7 @@ class OpenAiAsyncTaskProviderTest {
     }
 
     private ImageProvider.SubmitCommand cmd() {
-        return new ImageProvider.SubmitCommand("gpt-image-2", "cat", 1, null, null, null, null, 10_000);
+        return new ImageProvider.SubmitCommand("gpt-image-2", "cat", 1, null, null, null, null, null, 10_000);
     }
 
     @Test
@@ -121,14 +122,16 @@ class OpenAiAsyncTaskProviderTest {
     }
 
     @Test
-    void missingTaskIdIsUnknownError() {
+    void missingTaskIdIsBadResponseNotRedirectable() {
+        // 2xx 但没任务号：上游可能已受理（代理回垃圾）→ BAD_RESPONSE，不换渠道重发（防重复扣费）
         wm.stubFor(post(urlEqualTo("/v1/images/generations"))
                 .willReturn(aResponse().withStatus(202).withBody("{\"weird\":true}")));
         try {
             provider.submit(cmd(), rt(Map.of()));
             fail("应抛出异常");
         } catch (UpstreamCallException e) {
-            assertEquals(UpstreamErrorKind.UNKNOWN, e.getKind());
+            assertEquals(UpstreamErrorKind.BAD_RESPONSE, e.getKind());
+            assertFalse(e.getKind().isRetryable(), "BAD_RESPONSE 不可转移重发");
         }
     }
 
@@ -137,7 +140,7 @@ class OpenAiAsyncTaskProviderTest {
         // UUAPI 异步图生图：带参考图自动切 /images/edits/async，参考图包成 images[].image_url
         ChannelConfigService.ChannelRuntime uu = rt(Map.of("flavor", "uu", "refImageStyle", "uuapi"));
         ImageProvider.SubmitCommand withImg = new ImageProvider.SubmitCommand("gpt-image-2.5", "美化", 1,
-                "1024x1024", null, List.of("https://r1.png"), null, 10_000);
+                null, null, null, List.of("https://r1.png"), null, 10_000);
         wm.stubFor(post(urlEqualTo("/v1/images/edits/async"))
                 .willReturn(aResponse().withStatus(202)
                         .withBody("{\"task_id\":\"imgtask_1\",\"status\":\"pending\"}")));
@@ -164,7 +167,7 @@ class OpenAiAsyncTaskProviderTest {
                 wm.baseUrl() + "/v1", "sk-x", Map.of("submitPath", "/images/generations/async"),
                 Map.of("flavor", "uu", "refImageStyle", "uuapi"));
         ImageProvider.SubmitCommand withImg = new ImageProvider.SubmitCommand("gpt-image-2.5", "美化", 1,
-                null, null, List.of("https://r1.png"), null, 10_000);
+                null, null, null, List.of("https://r1.png"), null, 10_000);
         wm.stubFor(post(urlEqualTo("/v1/images/edits/async"))
                 .willReturn(aResponse().withStatus(202).withBody("{\"task_id\":\"imgtask_9\"}")));
         assertEquals("imgtask_9", assertInstanceOf(ImageProvider.SubmitOutcome.Accepted.class,

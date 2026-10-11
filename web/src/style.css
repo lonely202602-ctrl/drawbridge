@@ -307,3 +307,39 @@ textarea.input { resize: vertical; line-height: 1.7; }
 .page-enter-from { opacity: 0; transform: translateY(8px); }
 .page-leave-to { opacity: 0; transform: translateY(-6px); }
 [draggable="true"] { -webkit-user-drag: element; }
+
+/* ---------------- 分隔线（带居中说明文字，data-label 传入） ---------------- */
+hr.divider {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 18px 0;
+  position: relative;
+  overflow: visible;
+}
+hr.divider[data-label]::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--surface);
+  color: var(--ink2);
+  font-size: 12px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+/* ---------------- 成员拖拽排序（分组编辑器） ---------------- */
+.drag-handle {
+  cursor: grab;
+  color: var(--ink2);
+  font-size: 14px;
+  padding: 0 2px;
+  user-select: none;
+}
+.drag-handle:active { cursor: grabbing; }
+.member-row.dragging {
+  opacity: 0.5;
+  outline: 2px dashed var(--accent);
+  border-radius: 10px;
+}

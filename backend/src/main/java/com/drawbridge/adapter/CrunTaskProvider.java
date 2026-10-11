@@ -24,9 +24,9 @@ import java.util.Set;
 @Component
 public class CrunTaskProvider implements ImageProvider {
 
-    /** resolution/aspect_ratio 是网关契约键，由网关直译，options 不许绕过 */
+    /** resolution/aspect_ratio/size 是网关契约键，由网关直译，options 不许绕过 */
     private static final Set<String> RESERVED_INPUT = Set.of("modelVariant", "prompt", "imgUrls",
-            "resolution", "aspect_ratio", "aspectRatio");
+            "resolution", "aspect_ratio", "aspectRatio", "size");
 
     private final UpstreamHttp http;
 
@@ -70,7 +70,8 @@ public class CrunTaskProvider implements ImageProvider {
         }
         String taskId = node.path("data").path("task_id").asText(null);
         if (taskId == null || taskId.isBlank()) {
-            throw new UpstreamCallException(UpstreamErrorKind.UNKNOWN,
+            // 2xx 但没有任务号：上游可能已受理（代理回垃圾），不换渠道重发（防重复扣费）
+            throw new UpstreamCallException(UpstreamErrorKind.BAD_RESPONSE,
                     "Crun CreateTask 成功但缺少 task_id", result.status());
         }
         return new SubmitOutcome.Accepted(taskId, result.body());
@@ -202,12 +203,24 @@ public class CrunTaskProvider implements ImageProvider {
             ArrayNode urls = input.putArray("img_urls");
             cmd.imageUrls().forEach(urls::add);
         }
-        // 分辨率契约：Crun 原生认「比例+档位」，原样直译（控制器已归一化默认 1:1 / 1k）
-        if (cmd.aspectRatio() != null && !cmd.aspectRatio().isBlank()) {
-            input.put("aspect_ratio", cmd.aspectRatio());
+        // 分辨率契约：Crun 原生认「比例+档位」，业务方显式传了才发（不传不带，模型用自己的默认）；
+        // 旧版 size（deprecated）换算成比例+档位兜底，显式传值优先
+        String ratio = cmd.aspectRatio();
+        String tier = cmd.resolution();
+        if ((ratio == null || ratio.isBlank()) && cmd.legacySize() != null) {
+            String[] derived = Resolutions.crunSizeFromLegacy(cmd.legacySize());
+            if (derived != null) {
+                ratio = derived[0];
+                if (tier == null || tier.isBlank()) {
+                    tier = derived[1];
+                }
+            }
         }
-        if (cmd.resolution() != null && !cmd.resolution().isBlank()) {
-            input.put("resolution", cmd.resolution());
+        if (ratio != null && !ratio.isBlank()) {
+            input.put("aspect_ratio", ratio);
+        }
+        if (tier != null && !tier.isBlank()) {
+            input.put("resolution", tier);
         }
         if (cmd.options() != null) {
             for (Map.Entry<String, Object> e : cmd.options().entrySet()) {

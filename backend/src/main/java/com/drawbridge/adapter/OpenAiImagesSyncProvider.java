@@ -52,7 +52,8 @@ public class OpenAiImagesSyncProvider implements ImageProvider {
         }
         JsonNode data = node.path("data");
         if (!data.isArray() || data.isEmpty()) {
-            throw new UpstreamCallException(UpstreamErrorKind.UNKNOWN,
+            // 2xx 但响应形状不对：上游可能已出图（代理回垃圾），不换渠道重发（防重复扣费）
+            throw new UpstreamCallException(UpstreamErrorKind.BAD_RESPONSE,
                     "同步上游返回成功但缺少 data 数组", result.status());
         }
         List<String> urls = new ArrayList<>();
@@ -66,7 +67,7 @@ public class OpenAiImagesSyncProvider implements ImageProvider {
             }
         }
         if (urls.isEmpty()) {
-            throw new UpstreamCallException(UpstreamErrorKind.UNKNOWN,
+            throw new UpstreamCallException(UpstreamErrorKind.BAD_RESPONSE,
                     "同步上游返回成功但未包含 url/b64_json", result.status());
         }
         return new SubmitOutcome.Completed(urls, inlineB64, result.body(), null);
@@ -87,8 +88,12 @@ public class OpenAiImagesSyncProvider implements ImageProvider {
         if (cmd.n() > 0 && cmd.n() != 1) {
             body.put("n", cmd.n());
         }
-        // 分辨率契约：比例+档位 → 方向归档成上游必然接受的三档尺寸（缺省=方图，永远给确定值）
-        body.put("size", Resolutions.openAiSize(cmd.aspectRatio(), cmd.resolution(), rt.extra()));
+        // 分辨率契约：业务方显式传了比例才发 size（没传不带=模型用自己的默认，修图不裁方图）；
+        // 旧版 size（deprecated）原样透传优先
+        String size = Resolutions.openAiSize(cmd.aspectRatio(), cmd.resolution(), cmd.legacySize(), rt.extra());
+        if (size != null && !size.isBlank()) {
+            body.put("size", size);
+        }
         RefImages.applyTo(body, cmd.imageUrls(), RefImages.uuapiEdits(rt, cmd.imageUrls()));
         if (cmd.options() != null) {
             for (Map.Entry<String, Object> e : cmd.options().entrySet()) {
@@ -122,12 +127,10 @@ public class OpenAiImagesSyncProvider implements ImageProvider {
         return override != null && !override.isBlank() ? override : "/images/generations";
     }
 
-    /** b64 → data URI，业务方可直接用于 <img>；格式取 options.output_format，默认 png。 */
+    /** b64 → data URI，业务方可直接用于 <img>；格式取 options.output_format，否则按魔数嗅探。 */
     private String dataUri(String b64, SubmitCommand cmd) {
-        String fmt = "png";
-        if (cmd.options() != null && cmd.options().get("output_format") instanceof String s && !s.isBlank()) {
-            fmt = s;
-        }
+        String fmt = cmd.options() != null && cmd.options().get("output_format") instanceof String s && !s.isBlank()
+                ? s : B64Mime.sniff(b64);
         return "data:image/" + fmt + ";base64," + b64;
     }
 }

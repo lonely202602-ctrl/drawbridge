@@ -47,7 +47,7 @@ class CrunTaskProviderTest {
     }
 
     private ImageProvider.SubmitCommand cmd(String model) {
-        return new ImageProvider.SubmitCommand(model, "a cat", 1, null, null, null, null, 10_000);
+        return new ImageProvider.SubmitCommand(model, "a cat", 1, null, null, null, null, null, 10_000);
     }
 
     @Test
@@ -111,7 +111,7 @@ class CrunTaskProviderTest {
                 .willReturn(aResponse().withStatus(200)
                         .withBody("{\"code\":200,\"data\":{\"task_id\":\"ct_flip\"}}")));
         ImageProvider.SubmitCommand cmd = new ImageProvider.SubmitCommand(
-                "google/nano-banana-2-1", "cat", 1, "1k", null, null, null, 10000);
+                "google/nano-banana-2-1", "cat", 1, "1k", null, null, null, null, 10000);
         ImageProvider.SubmitOutcome.Accepted accepted = assertInstanceOf(
                 ImageProvider.SubmitOutcome.Accepted.class, provider.submit(cmd, rt));
         assertEquals("ct_flip", accepted.upstreamTaskId());
@@ -152,7 +152,7 @@ class CrunTaskProviderTest {
     void requestShapeMatchesCrunContract() {
         // gpt-image-2-5 家族带 model_variant（默认 flare）+ img_urls + 分辨率直译
         ImageProvider.SubmitCommand withImage = new ImageProvider.SubmitCommand(
-                "openai/gpt-image-2-5", "p", 1, "2k", "3:2",
+                "openai/gpt-image-2-5", "p", 1, "2k", "3:2", null,
                 List.of("https://pub/ref.png"), null, 10_000);
         String body = provider.buildRequestJson(withImage, rt);
         assertTrue(body.contains("\"model\":\"openai/gpt-image-2-5\""));
@@ -169,8 +169,37 @@ class CrunTaskProviderTest {
 
         // modelVariant option 覆盖
         ImageProvider.SubmitCommand variant = new ImageProvider.SubmitCommand(
-                "openai/gpt-image-2-5", "p", 1, null, null, null,
+                "openai/gpt-image-2-5", "p", 1, null, null, null, null,
                 Map.of("modelVariant", "sunburst"), 10_000);
         assertTrue(provider.buildRequestJson(variant, rt).contains("\"model_variant\":\"sunburst\""));
+    }
+
+    @Test
+    void sizeParamsOnlySentWhenProvidedAndLegacySizeConverted() {
+        // 什么都不传 → 不带 aspect_ratio/resolution（不逼不支持这俩参数的模型吃 422）
+        String bare = provider.buildRequestJson(cmd("google/nano-banana-3"), rt);
+        assertTrue(!bare.contains("aspect_ratio"), bare);
+        assertTrue(!bare.contains("resolution"), bare);
+
+        // 旧版 size（deprecated）→ 长边定档 + 比例就近吸附常用枚举：1792x1024 → 16:9 + 2k
+        // （线上实测：Crun 对枚举外的比例如 7:4 直接 422，必须吸附）
+        ImageProvider.SubmitCommand legacy = new ImageProvider.SubmitCommand(
+                "m", "p", 1, null, null, "1792x1024", null, null, 10_000);
+        String converted = provider.buildRequestJson(legacy, rt);
+        assertTrue(converted.contains("\"aspect_ratio\":\"16:9\""), converted);
+        assertTrue(converted.contains("\"resolution\":\"2k\""), converted);
+
+        // 显式传值优先于 legacy size 换算
+        ImageProvider.SubmitCommand explicitWins = new ImageProvider.SubmitCommand(
+                "m", "p", 1, "2k", "16:9", "1792x1024", null, null, 10_000);
+        String explicit = provider.buildRequestJson(explicitWins, rt);
+        assertTrue(explicit.contains("\"aspect_ratio\":\"16:9\""), explicit);
+        assertTrue(explicit.contains("\"resolution\":\"2k\""), explicit);
+
+        // auto 视为没传（控制器层已归一，这里防垃圾透传）
+        ImageProvider.SubmitCommand junk = new ImageProvider.SubmitCommand(
+                "m", "p", 1, null, null, "auto", null, null, 10_000);
+        String junkBody = provider.buildRequestJson(junk, rt);
+        assertTrue(!junkBody.contains("aspect_ratio"), junkBody);
     }
 }

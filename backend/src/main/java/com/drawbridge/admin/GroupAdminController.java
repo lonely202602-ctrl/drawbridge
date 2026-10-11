@@ -218,7 +218,8 @@ public class GroupAdminController {
         return ApiResponse.ok();
     }
 
-    /** 令牌授权分组列表里移除本分组编码；清空后等价于「全部分组」。 */
+    /** 令牌授权分组列表里移除本分组编码；清空后写 []（无任何授权分组），绝不是 null——
+     *  null 在鉴权里等于「全部分组」（权限放大），且 MyBatis-Plus 默认策略跳过 null 字段根本不落库。 */
     private void cascadeRemoveAllowedGroup(String groupCode) {
         for (ApiToken token : tokenMapper.selectList(Wrappers.<ApiToken>lambdaQuery()
                 .isNotNull(ApiToken::getAllowedGroups))) {
@@ -231,7 +232,9 @@ public class GroupAdminController {
                     .map(com.fasterxml.jackson.databind.JsonNode::asText)
                     .filter(c -> !c.equals(groupCode))
                     .collect(java.util.stream.Collectors.toList());
-            token.setAllowedGroups(codes.isEmpty() ? null : com.drawbridge.common.JsonUtil.toJson(codes));
+            // 只授了本分组的令牌 → "[]"（零权限）。令牌持有者需重新授权后才能继续调用，
+            // 新建同名分组也不会让它自动拿回权限（权限漂移修掉）
+            token.setAllowedGroups(codes.isEmpty() ? "[]" : com.drawbridge.common.JsonUtil.toJson(codes));
             token.setUpdatedAt(LocalDateTime.now());
             tokenMapper.updateById(token);
         }

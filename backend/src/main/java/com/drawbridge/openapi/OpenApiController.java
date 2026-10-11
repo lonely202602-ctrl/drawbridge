@@ -69,7 +69,9 @@ public class OpenApiController {
         if (!rateLimiter.allowSubmit(ctx.token().getId())) {
             throw new BizException(ErrorCode.RATE_LIMITED);
         }
-        // 归一化：image（单张，OpenAI 习惯）并入 images 首位；比例缺省=方图、档位缺省=1k（两族上游都拿到确定值）
+        // 归一化：image（单张，OpenAI 习惯）并入 images 首位。
+        // 比例/档位没传就存 null——适配器"没传不发参数"，模型用自己的默认（修图不裁方图）；
+        // 不再强填 1:1/1k 默认（那是把"用户没说"偷换成"用户要方图"）
         List<String> merged = new java.util.ArrayList<>();
         if (body.image() != null && !body.image().isBlank()) {
             merged.add(body.image().trim());
@@ -82,11 +84,26 @@ public class OpenApiController {
             });
         }
         String ratio = body.aspectRatio() == null || body.aspectRatio().isBlank()
-                ? "1:1" : body.aspectRatio().trim();
+                ? null : body.aspectRatio().trim();
         String tier = body.resolution() == null || body.resolution().isBlank()
-                ? "1k" : body.resolution().trim().toLowerCase();
+                ? null : body.resolution().trim().toLowerCase();
+        // 旧版 size（deprecated）：auto 视为没传；1024X1024 大写 X 不挑；格式不认识直接 400，
+        // 不静默丢弃——老调用方的尺寸意图丢了会拿到完全不相干的图
+        String legacySize = body.size();
+        if (legacySize != null) {
+            legacySize = legacySize.trim();
+            if (legacySize.equalsIgnoreCase("auto")) {
+                legacySize = null;
+            } else if (!legacySize.matches("\\d{3,4}[xX]\\d{3,4}")) {
+                throw new BizException(ErrorCode.PARAM_INVALID,
+                        "size 已废弃，请改用 aspectRatio（W:H）+ resolution（1k/2k/4k）；兼容格式为 宽x高（如 1024x1024）: "
+                                + legacySize);
+            } else {
+                legacySize = legacySize.toLowerCase(java.util.Locale.ROOT);
+            }
+        }
         OpenApiDtos.ImageSubmitRequest req = new OpenApiDtos.ImageSubmitRequest(body.model(), body.prompt(),
-                body.n(), tier, ratio, null, merged.isEmpty() ? null : merged, body.options());
+                body.n(), tier, ratio, legacySize, null, merged.isEmpty() ? null : merged, body.options());
         validatePayload(req);
 
         int n = req.n() == null ? 1 : req.n();
@@ -168,7 +185,8 @@ public class OpenApiController {
         if (status != null && !status.isBlank()) {
             wrapper.eq(GenerateTask::getStatus, status);
         }
-        Page<GenerateTask> result = taskMapper.selectPage(new Page<>(page, Math.min(size, 100)), wrapper);
+        Page<GenerateTask> result = taskMapper.selectPage(
+                new Page<>(page, Math.max(1, Math.min(size, 100))), wrapper);
         List<OpenApiDtos.TaskSummary> records = result.getRecords().stream()
                 .map(OpenApiDtos.TaskSummary::of).toList();
         return ApiResponse.ok(new PageResult<>(result.getTotal(), records));
@@ -208,9 +226,8 @@ public class OpenApiController {
                     "一个任务固定出一张图，不支持 n 参数，多张图请提交多个任务");
         }
         if (body.images() != null) {
-            if (body.images().size() > 4) {
-                throw new BizException(ErrorCode.PARAM_INVALID, "参考图最多 4 张");
-            }
+            // 数量不设网关上限：各模型参考图容量不同（gpt-image 系 14 张、nano 系更少），
+            // 超出时上游会给出精确报错（Crun 422 errors 明细），网关代为判断反而会错杀合法请求
             body.images().forEach(this::checkUrl);
         }
         if (body.aspectRatio() != null && !body.aspectRatio().matches("[1-9][0-9]{0,4}:[1-9][0-9]{0,4}")) {

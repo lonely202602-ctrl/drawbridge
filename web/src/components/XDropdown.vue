@@ -1,7 +1,7 @@
 <template>
   <div class="xdrop" ref="root">
     <div @click="open = !open"><slot name="trigger" /></div>
-    <div v-if="open" class="menu xdrop-menu" @click.stop>
+    <div v-if="open" class="menu xdrop-menu">
       <slot />
     </div>
   </div>

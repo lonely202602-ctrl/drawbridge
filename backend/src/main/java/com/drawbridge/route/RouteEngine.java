@@ -72,12 +72,15 @@ public class RouteEngine {
             }
             available.add(new Candidate(channel, member));
         }
-        // 半开渠道垫底：探测期不与正常渠道平起平坐，病没好时先让它接最少的量（各分组内仍按策略排序）
+        // 半开渠道垫底：探测期不与正常渠道平起平坐，病没好时先让它接最少的量。
+        // 但停滞超过 half_open_idle_ms 的半开不再垫底——否则热渠道健康时它永远分不到探测流量，
+        // 永远恢复不了；回到正常位接探测流量不破坏保护（没好会被打失败重新熔断）
         List<Candidate> hot = new ArrayList<>();
         List<Candidate> probing = new ArrayList<>();
         for (Candidate c : available) {
-            (healthTracker.healthState(c.channel().getId()) == ChannelHealthTracker.HALF_OPEN
-                    ? probing : hot).add(c);
+            boolean halfOpen = healthTracker.healthState(c.channel().getId()) == ChannelHealthTracker.HALF_OPEN;
+            boolean bottomed = halfOpen && !healthTracker.halfOpenExpired(c.channel().getId());
+            (bottomed ? probing : hot).add(c);
         }
         List<Candidate> ordered = new ArrayList<>(order(strategy, hot, group.getId()));
         ordered.addAll(order(strategy, probing, group.getId()));

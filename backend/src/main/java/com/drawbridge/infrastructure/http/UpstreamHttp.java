@@ -66,17 +66,21 @@ public class UpstreamHttp {
             throw UpstreamCallException.network("上游连接失败: " + rootMessage(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw UpstreamCallException.network("请求被中断");
+            // 停机强制中断不是渠道故障：独立类别，不喂熔断、不计渠道失败
+            throw new UpstreamCallException(com.drawbridge.adapter.UpstreamErrorKind.SHUTDOWN_INTERRUPT,
+                    "请求被停机中断", null);
         }
     }
 
-    /** 解析响应体为 JSON 节点；非合法 JSON 抛 UNKNOWN（带 HTTP 状态）。 */
+    /** 解析响应体为 JSON 节点；非合法 JSON 抛异常——2xx 归 BAD_RESPONSE（上游可能已出图，不可换渠道重发），其它状态归 UNKNOWN。 */
     public static com.fasterxml.jackson.databind.JsonNode parseBody(int status, String body) {
         try {
             return JsonUtil.MAPPER.readTree(body == null ? "" : body);
         } catch (Exception e) {
-            throw new UpstreamCallException(com.drawbridge.adapter.UpstreamErrorKind.UNKNOWN,
-                    "上游响应非 JSON（HTTP " + status + "）", status);
+            com.drawbridge.adapter.UpstreamErrorKind kind = status >= 200 && status < 300
+                    ? com.drawbridge.adapter.UpstreamErrorKind.BAD_RESPONSE
+                    : com.drawbridge.adapter.UpstreamErrorKind.UNKNOWN;
+            throw new UpstreamCallException(kind, "上游响应非 JSON（HTTP " + status + "）", status);
         }
     }
 

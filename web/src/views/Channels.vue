@@ -102,7 +102,8 @@
             <label>接口确认</label>
             <div>
               <div class="hint" style="margin-bottom: 6px">
-                已识别到<b>图生图</b>端点：请核对两条 URL（不带参考图的<b>文生图</b>永远走模板默认，带参考图才走图生图端点）
+                已识别到<b>图生图</b>端点：请核对两条 URL（不带参考图的<b>文生图</b>永远走模板默认，带参考图才走图生图端点；
+                参考图按 uuapi 格式 images[].image_url 发送，不支持官方 OpenAI 的 multipart 文件上传）
               </div>
               <input v-model="w.submitPath" class="input" placeholder="留空 = 模板默认" />
               <div class="hint" style="margin: 2px 0 6px">↑ 文生图</div>
@@ -317,14 +318,20 @@ function applyCurlAndNext() {
     const dp = normPath(currentProto.value.defaultPath)
     if (cp && dp && cp !== dp) {
       if (cp.includes('/edits')) {
-        // 图生图端点：只管带参考图的请求，存 editsSubmitPath；文生图永远走模板默认
+        // 图生图端点：只管带参考图的请求，存 editsSubmitPath；文生图永远走模板默认。
+        // 网关的图生图只支持 uuapi JSON 格式（images[].image_url），必须同时启用 refImageStyle=uuapi，
+        // 否则后端不会走这个端点（默认风格带参考图仍打 generations）
         w.editsSubmitPath = cp
+        if (!w.refStyle) {
+          w.refStyle = 'uuapi'
+          curlNotices.value.push('已同步启用「图生图参考图：uuapi」，带参考图时自动切该端点（可在高级选项关闭）')
+        }
         if (w.protocol === 'OPENAI_ASYNC_TASK' && cp.includes('/async') && w.flavor !== 'uu') {
           w.flavor = 'uu'
           applyFlavorDefaults()
           curlNotices.value.push('图生图路径含 /async，已自动切换为 UU 风格（查询字段已按 UU 预填）')
         }
-        curlNotices.value.push(`检测到图生图端点 ${cp}：已存入「图生图端点」（仅带参考图时使用），文生图仍走模板默认（${dp}），请在下方接口确认里核对`)
+        curlNotices.value.push(`检测到图生图端点 ${cp}：已存入「图生图端点」。注意：按 uuapi 格式（images[].image_url）发送，不支持官方 OpenAI 的 multipart 文件上传；文生图仍走模板默认（${dp}），请在下方接口确认里核对`)
       } else {
         w.submitPath = cp
         curlNotices.value.push(`提交路径与模板默认（${dp}）不同，已按 curl 采用：${cp}（注意：路径覆盖对该渠道所有请求生效）`)

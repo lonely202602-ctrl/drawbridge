@@ -26,6 +26,11 @@ public enum UpstreamErrorKind {
     ACCESS_FORBIDDEN(true, ChannelAction.BREAKER_FEED, "UPSTREAM_ALL_FAILED"),
     /** 上游查不到该任务（404 任务未找到）：轮询期任务已受理不可重发，直接终态 */
     TASK_NOT_FOUND(false, ChannelAction.NONE, "UPSTREAM_TASK_LOST"),
+    /** 停机强制中断（shutdownNow）：不是渠道的病，不喂熔断不停用；是否终态由提交链路按"是否已发过请求"决定 */
+    SHUTDOWN_INTERRUPT(false, ChannelAction.NONE, "SYSTEM_SHUTDOWN"),
+    /** 上游 2xx 但响应不是合法 JSON：上游可能已受理甚至已出图（代理回垃圾），
+     *  提交阶段绝不换渠道重发（防重复扣费）；轮询阶段按退避重试 */
+    BAD_RESPONSE(false, ChannelAction.NONE, "UPSTREAM_BAD_RESPONSE"),
     /** 渠道当前没有可服务此模型的账号/容量（如 new-api 系 404「无可用渠道」）：换渠道重试，不停用渠道 */
     MODEL_UNAVAILABLE(true, ChannelAction.NONE, "UPSTREAM_MODEL_UNAVAILABLE"),
     /** 提示词/内容审核拦截：不重试，作为任务结果返回业务方 */

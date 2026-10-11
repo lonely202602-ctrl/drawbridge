@@ -56,7 +56,7 @@
 
       <div class="db-card zoom-in" style="display: flex; align-items: center; justify-content: center; min-height: 120px;
            cursor: pointer; color: var(--accent); flex-direction: column; gap: 6px; border: 2px dashed #c2d6c8"
-           @click="createVisible = true">
+           @click="openCreate">
         <div style="font-size: 26px">＋</div>
         <div>新建分组</div>
       </div>
@@ -360,6 +360,13 @@ async function setStrategy(g, s) {
   }))
   g.strategy = s.value
   toast(`「${g.groupCode}」已切换为${s.label}`)
+}
+
+// ---------------- 新建/编辑分组 ----------------
+/** 新建必须重置表单：编辑过某个分组后表单里还留着它的 id，带着 id 保存会走 PUT 改掉那个分组 */
+function openCreate() {
+  editForm.value = { id: null, groupCode: '', displayName: '', remark: '' }
+  createVisible.value = true
 }
 
 async function saveGroup() {

@@ -55,6 +55,15 @@ public class GenerateTask {
 
     private Integer pollCount;
 
+    /** 提交链路回退重跑计数（回退退避与 5 次上限用它；受理成功清零。与轮询次数 poll_count 语义分离） */
+    private Integer rerunCount;
+
+    /** 轮询期连续 404 计数（任务丢失宽限判据：连续 N 次才终态，非 404 轮询即清零） */
+    private Integer notFoundCount;
+
+    /** 最近一次轮询上游的时间（轮询器领取即写，管理端任务详情展示轮询活性） */
+    private LocalDateTime lastPollAt;
+
     private LocalDateTime nextPollTime;
 
     /** 生命周期截止：超时判 FAILED(TIMEOUT) */

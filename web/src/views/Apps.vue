@@ -16,11 +16,12 @@
         </div>
         <div class="hint" style="margin: 8px 0">
           SK 前缀 <code>{{ t.prefix }}</code> ·
-          授权分组 {{ t.allowedGroups.length ? t.allowedGroups.join('、') : '全部' }}
+          授权分组 <span :style="t.allowedGroups && !t.allowedGroups.length ? 'color: var(--danger); font-weight: 600' : ''">{{ groupsText(t.allowedGroups) }}</span>
           <span v-if="t.expiresAt"> · 过期于 {{ t.expiresAt }}</span>
         </div>
         <div style="display: flex; gap: 6px; flex-wrap: wrap">
           <button class="btn primary sm" @click="revealSk(t)">查看 SK</button>
+          <button class="btn ghost sm" @click="openEditGroups(t)">编辑分组</button>
           <button class="btn ghost sm" @click="toggleToken(t)">{{ t.status === 1 ? '禁用' : '启用' }}</button>
           <button class="btn danger sm" @click="delToken(t)">删除</button>
         </div>
@@ -49,6 +50,24 @@
         <button class="btn primary" @click="copySk">复制</button>
       </template>
     </XDialog>
+
+    <!-- 编辑授权分组（扩宽 / 缩减） -->
+    <XDialog v-model="editVisible" :title="`授权分组 - ${editTarget?.name || ''}`" width="460px">
+      <template v-if="editTarget">
+        <div v-if="editTarget.allowedGroups && !editTarget.allowedGroups.length" class="alert warning" style="margin-bottom: 12px">
+          该令牌当前没有任何授权分组（原分组已被删除）。保存时若不选择分组，将恢复为「全部」。
+        </div>
+        <div class="field">
+          <label>授权分组</label>
+          <XSelect v-model="editGroups" multiple block :options="groupOptions"
+                   placeholder="不选 = 可调用全部分组" />
+          <div class="form-hint">SK 不变，业务方无感知；缩减后新任务立即无法调用被移除的分组</div>
+        </div>
+      </template>
+      <template #footer>
+        <button class="btn primary block" @click="saveGroups">保存</button>
+      </template>
+    </XDialog>
   </div>
 </template>
 
@@ -66,8 +85,18 @@ const skVisible = ref(false)
 const skTitle = ref('SK')
 const newSk = ref('')
 const form = ref({ name: '', allowedGroups: [] })
+const editVisible = ref(false)
+const editTarget = ref(null)
+const editGroups = ref([])
 
 const groupOptions = computed(() => groups.value.map(g => ({ label: g.groupCode, value: g.groupCode })))
+
+/** null=全部；[]=无授权分组（曾限定的分组被删除）。两者必须区分，否则零权限被显示成"全部" */
+function groupsText(g) {
+  if (g === null || g === undefined) return '全部'
+  if (!g.length) return '无授权分组（分组已删除，请重新授权）'
+  return g.join('、')
+}
 
 async function load() {
   tokens.value = await unwrap(api.get('/admin/tokens'))
@@ -106,6 +135,20 @@ async function copySk() {
 
 async function toggleToken(t) {
   await unwrap(api.put(`/admin/tokens/${t.id}`, { status: t.status === 1 ? 0 : 1 }))
+  await load()
+}
+
+/** 编辑授权分组：allowedGroups 为 null（全部）时预填空选；保存永远回传数组（空数组=恢复「全部」） */
+function openEditGroups(t) {
+  editTarget.value = t
+  editGroups.value = [...(t.allowedGroups || [])]
+  editVisible.value = true
+}
+
+async function saveGroups() {
+  await unwrap(api.put(`/admin/tokens/${editTarget.value.id}`, { allowedGroups: editGroups.value }))
+  editVisible.value = false
+  toast(editGroups.value.length ? `已更新为 ${editGroups.value.length} 个授权分组` : '已恢复为「全部分组」')
   await load()
 }
 

@@ -23,7 +23,7 @@
         <thead>
           <tr>
             <th>任务号</th><th>分组</th><th>状态</th><th>受理渠道</th>
-            <th>重试</th><th>错误信息</th><th>创建时间</th><th></th>
+            <th>重试</th><th style="width: 150px">错误码</th><th>错误信息</th><th>创建时间</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -33,12 +33,13 @@
             <td><span class="tag" :class="{ SUCCEEDED: 'g', FAILED: 'r', RUNNING: 'o', SUBMITTED: 'gr' }[row.status]">{{ row.status }}</span></td>
             <td>{{ row.channelName || '-' }}</td>
             <td>{{ row.attemptCount }}</td>
-            <td class="hint ellipsis" style="max-width: 260px" :title="row.errorMsg || ''">{{ row.errorMsg || '-' }}</td>
+            <td class="mono hint">{{ row.errorCode || '-' }}</td>
+            <td class="hint ellipsis" style="max-width: 220px" :title="row.errorMsg || ''">{{ row.errorMsg || '-' }}</td>
             <td class="hint">{{ row.createdAt }}</td>
             <td><button class="btn text sm" @click="openDetail(row)">详情 →</button></td>
           </tr>
           <tr v-if="!rows.length">
-            <td colspan="8" style="text-align: center; color: var(--ink2); padding: 30px">没有匹配的任务</td>
+            <td colspan="9" style="text-align: center; color: var(--ink2); padding: 30px">没有匹配的任务</td>
           </tr>
         </tbody>
       </table>
@@ -79,6 +80,15 @@
         </table>
         <div class="hint" style="margin: 8px 0 4px">
           SUBMIT 阶段的「受理成功」= 上游已接收任务并返回任务号，图片由网关后台轮询推进；任务最终结果以上方任务状态为准。
+        </div>
+        <div v-if="detail.task.upstreamTaskId" class="hint"
+             :style="detail.task.status === 'RUNNING' ? 'margin: 0 0 4px; color: var(--accent)' : 'margin: 0 0 4px'">
+          <template v-if="detail.task.status === 'RUNNING'">
+            轮询进行中：已轮询 {{ detail.task.pollCount ?? 0 }} 次 · 最近轮询 {{ fmtTime(detail.task.lastPollAt) }} · 下次轮询 {{ fmtTime(detail.task.nextPollTime) }}
+          </template>
+          <template v-else>
+            已轮询 {{ detail.task.pollCount ?? 0 }} 次 · 最近轮询 {{ fmtTime(detail.task.lastPollAt) }}
+          </template>
         </div>
 
         <h4 style="margin: 16px 0 6px">① 业务方请求体</h4>
@@ -123,8 +133,16 @@ async function openDetail(row) {
 }
 
 function pretty(json) {
-  if (!json) return ''
-  try { return JSON.stringify(JSON.parse(json), null, 2) } catch (e) { return json }
+  try {
+    return json ? JSON.stringify(JSON.parse(json), null, 2) : ''
+  } catch (e) {
+    return json || ''
+  }
+}
+
+/** LocalDateTime 序列化串 → 本地展示（yyyy-MM-dd HH:mm:ss），空值显示 - */
+function fmtTime(t) {
+  return t ? String(t).replace('T', ' ').slice(0, 19) : '-'
 }
 
 onMounted(() => load())

@@ -67,6 +67,7 @@ public class ChannelHealthTracker {
             if (!w.halfOpen) {
                 w.halfOpen = true;
                 w.halfOpenSuccesses = 0;
+                w.halfOpenSince = now();
             }
             return true;
         }
@@ -82,6 +83,17 @@ public class ChannelHealthTracker {
             return HALF_OPEN;
         }
         return NORMAL;
+    }
+
+    /**
+     * 半开探测停滞超过 half_open_idle_ms：不再让路由垫底。
+     * 否则热渠道健康时它永远排在队尾分不到流量、永远恢复不了。回到正常排队位置接探测流量
+     * 不破坏熔断保护——还没好会被打失败并重新熔断，只是给恢复一个时间兜底。
+     */
+    public synchronized boolean halfOpenExpired(Long channelId) {
+        Window w = window(channelId);
+        return w.halfOpen && w.halfOpenSince > 0
+                && now() - w.halfOpenSince > config.getLong(ConfigKeys.BREAKER_HALF_OPEN_IDLE_MS);
     }
 
     private void tripIfExceeded(Long channelId, Window w) {
@@ -119,5 +131,7 @@ public class ChannelHealthTracker {
         long openUntil = 0;
         boolean halfOpen = false;
         int halfOpenSuccesses = 0;
+        /** 进入半开的时刻：垫底豁免（half_open_idle_ms）的计时起点 */
+        long halfOpenSince = 0;
     }
 }

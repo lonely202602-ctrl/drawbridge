@@ -34,6 +34,8 @@ import java.util.List;
  * - 429 → 渠道短冷却；网络/5xx/未知 → 熔断计数
  * - 候选耗尽 → UPSTREAM_ALL_FAILED / NO_AVAILABLE_CHANNEL，退款
  * - 上游受理成功后绝不重发（重发可能重复扣费）
+ * - 停机强制中断不是渠道病：已发过请求 → SYSTEM_SHUTDOWN 终态；没发过 → 回退重跑
+ * - 2xx 但响应不可解析（BAD_RESPONSE）→ 终态不转移（上游可能已出图，转移即重复扣费）
  */
 @Slf4j
 @Service
@@ -71,10 +73,17 @@ public class SubmitChain {
         int submitTimeout = (int) config.getLong(ConfigKeys.SUBMIT_TIMEOUT_MS);
         int tried = 0;
         UpstreamCallException lastError = null;
+        Channel lastErrorChannel = null;
+        // 本次运行是否已向上游发出过请求：停机中断时决定"诚实终态"还是"安全回退"的判据
+        boolean requestSent = false;
 
         for (RouteEngine.Candidate candidate : candidates) {
             if (tried >= maxAttempts || System.currentTimeMillis() > deadline) {
                 break;
+            }
+            if (Thread.currentThread().isInterrupted()) {
+                // 停机强制中断：不再向任何渠道发请求（还没碰过上游 → 可安全回退）
+                throw new SubmissionAbortedException("停机中断，本次提交在发请求前终止");
             }
             Channel channel = candidate.channel();
             if (!guard.tryAcquire(channel.getId(), channel.getMaxConcurrency(),
@@ -94,13 +103,14 @@ public class SubmitChain {
                             "NO_PROVIDER", null, "该协议族无适配器", costMs(t0), null);
                     lastError = new UpstreamCallException(UpstreamErrorKind.UNKNOWN,
                             "渠道协议无适配器: " + channel.getProtocol(), null);
+                    lastErrorChannel = channel;
                     continue;
                 }
                 ChannelConfigService.ChannelRuntime rt = configService.runtimeOf(channel);
                 ImageProvider.SubmitCommand cmd = new ImageProvider.SubmitCommand(
                         candidate.member().getUpstreamModel(), payload.prompt(), n,
-                        payload.resolution(), payload.aspectRatio(), payload.images(),
-                        payload.options(), submitTimeout);
+                        payload.resolution(), payload.aspectRatio(), payload.legacySize(),
+                        payload.images(), payload.options(), submitTimeout);
                 submitUrl = provider.submitUrl(cmd, rt);
                 String requestJson = com.drawbridge.common.JsonUtil.truncateBytes(
                         provider.buildRequestJson(cmd, rt),
@@ -109,6 +119,7 @@ public class SubmitChain {
                 // 同时是兜底清扫的重跑判据（已存档=已到达发送点，不允许自动重跑）
                 archiveUpstreamRequestBody(taskId, submitUrl, requestJson);
 
+                requestSent = true;
                 ImageProvider.SubmitOutcome outcome = provider.submit(cmd, rt);
                 // 跨过这一行，上游已受理：此后任何异常都不允许换渠道重发（防重复出图重复扣费）
                 upstreamHit = true;
@@ -126,16 +137,36 @@ public class SubmitChain {
                         task.getTaskId(), channel.getId(), describeOutcome(outcome));
                 return;
             } catch (UpstreamCallException e) {
+                if (e.getKind() == UpstreamErrorKind.SHUTDOWN_INTERRUPT) {
+                    // 停机中断不是渠道病：不喂熔断不停用。已发过请求 → 诚实终态（上游可能已受理，
+                    // 回退重跑会重复扣费）；没发过 → 回退 SUBMITTED 交重启后重跑。
+                    recordAttempt(task, channel, candidate.member().getUpstreamModel(),
+                            e.getKind().name(), e.getHttpStatus(), e.getMessage(), costMs(t0), submitUrl);
+                    if (requestSent) {
+                        finisher.fail(taskId, "SYSTEM_SHUTDOWN",
+                                "发版停机中断提交（上游可能已受理），请重新提交");
+                        return;
+                    }
+                    throw new SubmissionAbortedException("停机中断，任务回退待重跑");
+                }
+                UpstreamCallException effective = e;
+                if (e.getKind() == UpstreamErrorKind.TASK_NOT_FOUND) {
+                    // 提交阶段的 404 = 提交端点/路径配置错（此时任务还没创建，谈不上"丢失"）：
+                    // 按渠道病处理——喂熔断、换下一候选；候选耗尽时错误码自然落 UPSTREAM_ALL_FAILED
+                    effective = new UpstreamCallException(UpstreamErrorKind.UPSTREAM_SERVER_ERROR,
+                            "提交接口返回 404（提交路径可能配置有误）: " + e.getMessage(), e.getHttpStatus());
+                }
                 recordAttempt(task, channel, candidate.member().getUpstreamModel(),
-                        e.getKind().name(), e.getHttpStatus(), e.getMessage(), costMs(t0), submitUrl);
-                applyChannelAction(channel, e.getKind());
-                lastError = e;
-                if (!e.getKind().isRetryable()) {
-                    finisher.fail(taskId, e.getKind().getExternalCode(), sanitize(e.getMessage(), channel));
+                        effective.getKind().name(), effective.getHttpStatus(), effective.getMessage(), costMs(t0), submitUrl);
+                applyChannelAction(channel, effective.getKind());
+                lastError = effective;
+                lastErrorChannel = channel;
+                if (!effective.getKind().isRetryable()) {
+                    finisher.fail(taskId, effective.getKind().getExternalCode(), sanitize(effective.getMessage(), channel));
                     return;
                 }
                 log.warn("渠道提交失败，换下一候选: taskId={}, channel={}, kind={}, msg={}",
-                        task.getTaskId(), channel.getId(), e.getKind(), e.getMessage());
+                        task.getTaskId(), channel.getId(), effective.getKind(), effective.getMessage());
             } catch (RuntimeException e) {
                 if (upstreamHit) {
                     // 上游已受理，收尾写库重试后仍失败：绝不换渠道重发；任务保持 RUNNING。
@@ -154,6 +185,7 @@ public class SubmitChain {
                 health.recordFailure(channel.getId());
                 lastError = new UpstreamCallException(UpstreamErrorKind.UNKNOWN,
                         String.valueOf(e.getMessage()), null);
+                lastErrorChannel = channel;
                 log.error("提交链路内部异常: taskId={}, channel={}", task.getTaskId(), channel.getId(), e);
             } finally {
                 guard.release(channel.getId());
@@ -163,7 +195,8 @@ public class SubmitChain {
         String code = lastError == null
                 ? "NO_AVAILABLE_CHANNEL"
                 : (tried > 0 ? "UPSTREAM_ALL_FAILED" : "NO_AVAILABLE_CHANNEL");
-        String msg = lastError == null ? "无可用上游渠道" : sanitize(lastError.getMessage(), null);
+        // 脱敏带上最后一个失败渠道的域名（不传渠道 = 上游域名原样透给业务方，变相暴露路由）
+        String msg = lastError == null ? "无可用上游渠道" : sanitize(lastError.getMessage(), lastErrorChannel);
         finisher.fail(taskId, code, msg);
     }
 
@@ -184,6 +217,8 @@ public class SubmitChain {
                             .eq(GenerateTask::getId, taskId)
                             .set(GenerateTask::getUpstreamTaskId, accepted.upstreamTaskId())
                             .set(GenerateTask::getPollCount, 0)
+                            .set(GenerateTask::getRerunCount, 0)
+                            .set(GenerateTask::getNotFoundCount, 0)
                             .set(GenerateTask::getNextPollTime, LocalDateTime.now()
                                     .plusNanos(config.getLong(ConfigKeys.POLL_INITIAL_INTERVAL_MS) * 1_000_000))
                             .set(GenerateTask::getUpdatedAt, LocalDateTime.now()));

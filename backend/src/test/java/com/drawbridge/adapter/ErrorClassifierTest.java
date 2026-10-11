@@ -135,6 +135,62 @@ class ErrorClassifierTest {
     }
 
     @Test
+    void relayQuotaWordingMapsToBalanceAtNarrowLayer() {
+        // 中转平台（new-api 系）典型形态：HTTP 403 + code=insufficient_user_quota → 自动停用渠道
+        assertEquals(UpstreamErrorKind.BALANCE_EXHAUSTED,
+                openAi(403, "{\"error\":{\"message\":\"用户额度不足\",\"code\":\"insufficient_user_quota\"}}").getKind());
+        // 中文文案走 403 窄识别
+        assertEquals(UpstreamErrorKind.BALANCE_EXHAUSTED,
+                openAi(403, "{\"error\":{\"message\":\"用户额度不足，请充值\"}}").getKind());
+        assertEquals(UpstreamErrorKind.BALANCE_EXHAUSTED,
+                openAi(403, "{\"error\":{\"message\":\"user quota is not enough\"}}").getKind());
+        assertEquals(UpstreamErrorKind.BALANCE_EXHAUSTED,
+                openAi(429, "{\"error\":{\"message\":\"该令牌额度已用尽\"}}").getKind());
+        // 第一层结构化字段也能认 insufficient_user_quota（不管上游配什么状态码）
+        assertEquals(UpstreamErrorKind.BALANCE_EXHAUSTED,
+                openAi(400, "{\"error\":{\"message\":\"x\",\"type\":\"insufficient_user_quota\",\"code\":\"insufficient_user_quota\"}}").getKind());
+    }
+
+    @Test
+    void greedyQuotaPatternsDoNotMisfireOnRateLimitWording() {
+        // 贪婪跨句回归：限流话术里夹带 quota/额度词样，不能被判成没米停渠道
+        assertEquals(UpstreamErrorKind.RATE_LIMITED,
+                openAi(429, "{\"error\":{\"message\":\"insufficient capacity, rate limit quota exceeded\"}}").getKind());
+        assertEquals(UpstreamErrorKind.RATE_LIMITED,
+                openAi(429, "{\"error\":{\"message\":\"slow down, monthly quota exceeded\"}}").getKind());
+    }
+
+    @Test
+    void moderationWordingIn403And5xx() {
+        // 403 带审核文案 → 终态，不把敏感词打满所有渠道
+        assertEquals(UpstreamErrorKind.CONTENT_REJECTED,
+                openAi(403, "{\"error\":{\"message\":\"提示词内容审核未通过\"}}").getKind());
+        // 5xx 带明确审核判定措辞 → 终态
+        assertEquals(UpstreamErrorKind.CONTENT_REJECTED,
+                openAi(500, "{\"error\":{\"message\":\"生成失败：违规内容\"}}").getKind());
+        // 5xx 带子系统名（服务故障，不是审核拒绝）→ 仍按服务错误转移，不误杀任务
+        assertEquals(UpstreamErrorKind.UPSTREAM_SERVER_ERROR,
+                openAi(503, "{\"error\":{\"message\":\"content moderation service unavailable\"}}").getKind());
+        assertEquals(UpstreamErrorKind.UPSTREAM_SERVER_ERROR,
+                openAi(500, "{\"error\":{\"message\":\"safety system timeout\"}}").getKind());
+    }
+
+    @Test
+    void modelNotFoundWordingMapsToModelPerm() {
+        // OpenAI 官方 model_not_found 文案（"you do not have access"）→ 换渠道而不是判参数错误终态
+        assertEquals(UpstreamErrorKind.MODEL_NOT_PERMITTED,
+                openAi(404, "{\"error\":{\"message\":\"The model 'gpt-x' does not exist or you do not have access to it.\"}}").getKind());
+    }
+
+    @Test
+    void crun403AlignedWithOpenAiFamily() {
+        assertEquals(UpstreamErrorKind.BALANCE_EXHAUSTED,
+                ErrorClassifier.fromCrunCode(403, "用户额度不足").getKind());
+        assertEquals(UpstreamErrorKind.ACCESS_FORBIDDEN,
+                ErrorClassifier.fromCrunCode(403, "forbidden").getKind());
+    }
+
+    @Test
     void httpStatusFallback() {
         assertEquals(UpstreamErrorKind.ACCESS_FORBIDDEN,
                 ErrorClassifier.fromHttpStatus(403, "").getKind());

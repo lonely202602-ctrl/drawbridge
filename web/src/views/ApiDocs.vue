@@ -10,7 +10,7 @@
     </div>
 
     <h3 style="margin: 22px 4px 10px">快速测试</h3>
-    <CodeBlock title="① 提交任务（model 填分组名；文生图可删掉 images；图生图/参考图必填，须公网可访问，最多 4 张）" :code="submitCurl(primaryGroup)" />
+    <CodeBlock title="① 提交任务（model 填分组名；文生图可删掉 images；图生图/参考图必填，须公网可访问；数量上限由模型决定）" :code="submitCurl(primaryGroup)" />
     <div class="hint" style="margin: -6px 4px 12px">
       可用分组：<template v-for="(g, i) in groupCodes" :key="g"><code class="pill">{{ g }}</code>{{ i < groupCodes.length - 1 ? ' / ' : '' }}</template>
       ——换分组只需替换 model 值。可选请求头 <code>X-Idempotency-Key: 业务唯一键</code>（防重复提交）
@@ -46,6 +46,61 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <h3 style="margin: 26px 4px 10px">分辨率参数：aspectRatio（方向）× resolution（档位）</h3>
+    <div class="db-card" style="padding: 14px 18px">
+      <div class="hint" style="line-height: 2">
+        这是<b>网关的统一参数</b>——背后接的是哪家上游你不用管，网关负责翻译成各家听得懂的说法：<br/>
+        · <code>aspectRatio</code>：方向意图，<code>W:H</code> 格式。常见支持 <code>1:1</code>、<code>2:3</code>、<code>3:2</code>、<code>3:4</code>、<code>4:3</code>、<code>4:5</code>、<code>5:4</code>、<code>9:16</code>、<code>16:9</code>、<code>21:9</code>；<b>具体支持集合由模型决定</b>（各模型略有差异），超出的比例会返回上游的明确错误，网关不代为限制；<br/>
+        · <code>resolution</code>：清晰度档位 <code>1k</code> / <code>2k</code> / <code>4k</code>（各模型对大小写要求不同，网关自动纠正，业务方一律小写即可）；<br/>
+        · 两个都<b>可以不传</b>：不传就不发尺寸参数，模型用自己的默认（带参考图修图时保持参考图方向，不会被裁成方图）。
+      </div>
+      <table class="xtable" style="margin-top: 10px">
+        <thead>
+          <tr>
+            <th style="width: 150px">你传</th>
+            <th>背后是 OpenAI 系上游（网关按方向归档成它认的宽×高）</th>
+            <th>背后是 Crun 系上游（网关原样直译，模型校验）</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">16:9 + 2k</td>
+            <td>size = <b>1536×1024</b>（横版；该族 2k 自动就近降级）</td>
+            <td>aspect_ratio=<b>16:9</b>、resolution=<b>2k</b></td>
+          </tr>
+          <tr>
+            <td class="mono">9:16 + 4k</td>
+            <td>size = <b>1024×1536</b>（竖版）</td>
+            <td>aspect_ratio=<b>9:16</b>、resolution=<b>4k</b></td>
+          </tr>
+          <tr>
+            <td class="mono">3:4 + 2k</td>
+            <td>size = <b>1024×1536</b>（竖版方向归档）</td>
+            <td>aspect_ratio=<b>3:4</b>、resolution=<b>2k</b></td>
+          </tr>
+          <tr>
+            <td class="mono">21:9 + 1k</td>
+            <td>size = <b>1536×1024</b>（超宽按横版归档）</td>
+            <td>aspect_ratio=<b>21:9</b>、resolution=<b>1k</b>（模型不支持时上游明确报错）</td>
+          </tr>
+          <tr>
+            <td class="mono">1:1 + 1k</td>
+            <td>size = <b>1024×1024</b></td>
+            <td>aspect_ratio=<b>1:1</b>、resolution=<b>1k</b></td>
+          </tr>
+          <tr>
+            <td class="mono">都不传</td>
+            <td>不带 size（模型默认）</td>
+            <td>不带参数（模型默认）</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="hint" style="margin-top: 10px; line-height: 1.9">
+        特殊模型的精确尺寸（如某些模型只认 1792×1024）由管理员按渠道配置映射，业务方无感；旧版 <code>size</code>
+        宽×高写法仍兼容（网关自动换算），<b>新接入请统一用上面两个参数</b>。
+      </div>
     </div>
 
     <h3 style="margin: 26px 4px 10px">任务状态与失败码</h3>
@@ -98,9 +153,9 @@ const params = [
   { field: 'model', req: '是', desc: '模型分组名（本文档页自动带出你配置的分组）' },
   { field: 'prompt', req: '与 image 二选一', desc: '提示词，≤4000 字符' },
   { field: 'n', req: '不要传', desc: '一个任务固定出一张图；传 n>1 会被拒绝' },
-  { field: 'resolution', req: '否', desc: '清晰度档位 1k/2k/4k，默认 1k；上游不支持高档自动就近降级' },
-  { field: 'aspectRatio', req: '否', desc: '方向意图 W:H（如 16:9、9:16），保证横竖不反；默认 1:1' },
-  { field: 'image / images', req: '否', desc: '参考图 URL（必须公网可访问），最多 4 张' },
+  { field: 'resolution', req: '否', desc: '清晰度档位 1k/2k/4k；不传就不发该参数，由模型用自己的默认' },
+  { field: 'aspectRatio', req: '否', desc: '方向意图 W:H；常见全集 1:1、2:3、3:2、3:4、4:3、4:5、5:4、9:16、16:9、21:9（由模型决定，超出上游明确报错）；不传就不发尺寸参数' },
+  { field: 'image / images', req: '否', desc: '参考图 URL（必须公网可访问）；数量上限由模型决定（gpt-image 系 14 张、nano 系更少），超出时上游返回明确错误' },
   { field: 'options', req: '否', desc: '透传参数（quality、output_format 等，模型支持才生效）' }
 ]
 

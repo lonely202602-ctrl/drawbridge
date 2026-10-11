@@ -38,6 +38,17 @@ class SubmitPayloadTest {
     }
 
     @Test
+    void parseLegacySizeAndNullContractFields() {
+        // 旧版 size 兼容读取（发版在途任务/deprecated 入参）；没传比例档位就是 null，不脑补默认
+        SubmitPayload p = SubmitPayload.parse(
+                "{\"prompt\":\"x\",\"size\":\"1792x1024\"}");
+        assertEquals("1792x1024", p.legacySize());
+        assertNull(p.resolution());
+        assertNull(p.aspectRatio());
+        assertTrue(p.images().isEmpty());
+    }
+
+    @Test
     void parseGarbageTolerated() {
         SubmitPayload p = SubmitPayload.parse("not-json");
         assertNull(p.prompt());

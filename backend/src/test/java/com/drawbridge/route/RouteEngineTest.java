@@ -146,6 +146,36 @@ class RouteEngineTest {
     }
 
     @Test
+    void halfOpenChannelBottomRankedUntilIdleExpires() throws Exception {
+        ChannelHealthTracker tracker = new ChannelHealthTracker(
+                new SystemConfigService(mock(SystemConfigMapper.class)));
+        for (int i = 0; i < 9; i++) {
+            tracker.recordSuccess(2L);
+        }
+        for (int i = 0; i < 11; i++) {
+            tracker.recordFailure(2L);
+        }
+        // 拨快 openUntil 让渠道 2 进入半开（刚进半开 → 垫底：3,1,2? 不——FAILOVER 序 = 1,3 + 2 垫底）
+        var field = ChannelHealthTracker.class.getDeclaredField("windows");
+        field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        var windows = (java.util.concurrent.ConcurrentHashMap<Long, ?>) field.get(tracker);
+        Object window = windows.get(2L);
+        var openUntil = window.getClass().getDeclaredField("openUntil");
+        openUntil.setAccessible(true);
+        openUntil.setLong(window, System.currentTimeMillis() - 1);
+        RouteEngine e = new RouteEngine(configService, tracker, cooldown);
+        assertTrue(tracker.isAvailable(2L));
+        assertEquals(List.of(1L, 3L, 2L), ids(e.candidatesFor("image2.5")), "新鲜半开垫底");
+
+        // 停滞超阈值（half_open_idle_ms 默认 120s，拨快 halfOpenSince）→ 回正常位 1,2,3
+        var since = window.getClass().getDeclaredField("halfOpenSince");
+        since.setAccessible(true);
+        since.setLong(window, System.currentTimeMillis() - 121_000);
+        assertEquals(List.of(1L, 2L, 3L), ids(e.candidatesFor("image2.5")), "停滞半开不再垫底，回到正常位接探测流量");
+    }
+
+    @Test
     void disabledGroupReturnsEmpty() {
         configService.groupByCode("image2.5").setEnabled(0);
         configService.refresh();

@@ -78,4 +78,8 @@ DRAWBRIDGE_DB_PASSWORD=<你的MySQL密码> mvn test
 - **优雅停机**：停服时提交/轮询线程池会等在途任务最多 30 秒收尾（`spring.lifecycle.timeout-per-shutdown-phase=30s`），请用 `kill`（SIGTERM）正常停服，不要 `kill -9`。
 - **对外契约变更**：`n` 参数已下线——一个任务固定出一张图，传 `n>1` 返回 400（多张图请提交多个任务）。
 - **分组 DELETE = 真删除**（原为软停用）：不可恢复、有在途任务时拒绝。**前后端必须一起发布**，并提醒已打开旧控制台的同事强制刷新（Ctrl+F5），否则旧页面的"停用分组"按钮会调 DELETE 造成误删。
-- **幂等键按令牌隔离**：唯一键从全局 `client_request_id` 改为 `(token_id, client_request_id)` 联合唯一，列大小写敏感（utf8mb4_bin）。跨令牌使用相同 key 不再互斥。存量库执行 `db/upgrade-20261011-idem-unique.sql`（改列类型会整表重建 generate_task，**建议停机窗口执行**；执行方式见脚本头注释）。
+- **幂等键按令牌隔离**：唯一键从全局 `client_request_id` 改为 `(token_id, client_request_id)` 联合唯一，列大小写敏感（utf8mb4_bin）。跨令牌使用相同 key 不再互斥。
+- **v0.3.0 升级脚本已三合一**：存量 v0.2.0 库执行 `db/upgrade-v0.2.0-to-v0.3.0.sql`（biz_request MEDIUMTEXT / upstream_url / 幂等键联合唯一 / rerun_count 与 not_found_count 拆列合并为一条 generate_task ALTER，**只整表重建一次，建议停机窗口执行**；执行方式见脚本头注释）。
+- **删除分组的令牌级联语义**：只授权了被删分组的令牌会写成 `[]`（零权限），管理端显示"无授权分组"；**不会**变成"全部分组"。重建同名分组也不会让这些令牌自动拿回权限，需重新授权。
+- **尺寸契约**：`aspectRatio`/`resolution` 不传就**不发对应上游参数**（模型用自己的默认；修图保持参考图方向）。旧版 `size` 参数进入 deprecated：格式合法（宽x高，大小写 X 均可，`auto` 视为没传）则原样透传给 OpenAI 系上游、换算给 Crun 系；非法格式返回 400。渠道 `extra_config.sizeMap` 支持按方向配：`{"2k":{"landscape":"2048x1152","portrait":"1152x2048","square":"2048x2048"}}`（字符串形式=整表覆盖仍兼容）。
+- **发版中断语义**：停机强制中断时，已向上游发过请求的任务判 `SYSTEM_SHUTDOWN` 终态（不回退重发，防重复扣费），没发过请求的安全回退重跑。**编排平台的终止宽限期需 ≥90 秒**（web 30s + 提交 30s + 轮询 30s），否则请在设置页调小等待。

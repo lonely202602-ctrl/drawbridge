@@ -102,15 +102,17 @@ public class TokenAdminController {
     }
 
     private Map<String, Object> view(ApiToken t) {
-        return Map.<String, Object>of(
-                "id", t.getId(),
-                "name", t.getName(),
-                "prefix", t.getSkPrefix() + "***",
-                "status", t.getStatus(),
-                "allowedGroups", t.getAllowedGroups() == null ? List.of()
-                        : JsonUtil.readTree(t.getAllowedGroups()).valueStream()
-                        .map(JsonNode::asText).toList(),
-                "expiresAt", t.getExpiresAt() == null ? "" : t.getExpiresAt());
+        Map<String, Object> row = new java.util.HashMap<>();
+        row.put("id", t.getId());
+        row.put("name", t.getName());
+        row.put("prefix", t.getSkPrefix() + "***");
+        row.put("status", t.getStatus());
+        // null=不限分组；[]=无授权分组（曾限定的分组被删除）。两者必须区分：
+        // 都归一成空列表的话，管理端会把"零权限"显示成"全部"，排障时完全对不上
+        row.put("allowedGroups", t.getAllowedGroups() == null ? null
+                : JsonUtil.readTree(t.getAllowedGroups()).valueStream().map(JsonNode::asText).toList());
+        row.put("expiresAt", t.getExpiresAt() == null ? "" : t.getExpiresAt());
+        return row;
     }
 
     @PutMapping("/{id}")
@@ -119,12 +121,17 @@ public class TokenAdminController {
         if (token == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "令牌不存在");
         }
+        if (body.getAllowedGroups() != null) {
+            // 清空列表=恢复"全部"（null）。updateById 的默认策略会跳过 null 字段写不进库，
+            // 必须用 UpdateWrapper 显式 set；写完把实体上的旧值清掉，防下面 updateById 又写回去
+            tokenMapper.update(null, Wrappers.<ApiToken>lambdaUpdate()
+                    .eq(ApiToken::getId, id)
+                    .set(ApiToken::getAllowedGroups, body.getAllowedGroups().isEmpty()
+                            ? null : JsonUtil.toJson(body.getAllowedGroups())));
+            token.setAllowedGroups(null);
+        }
         if (body.getStatus() != null) {
             token.setStatus(body.getStatus());
-        }
-        if (body.getAllowedGroups() != null) {
-            token.setAllowedGroups(body.getAllowedGroups().isEmpty()
-                    ? null : JsonUtil.toJson(body.getAllowedGroups()));
         }
         if (body.getExpiresAt() != null) {
             token.setExpiresAt(body.getExpiresAt());

@@ -45,6 +45,9 @@ public class TaskPoller {
 
     private final ExecutorService vexec = Executors.newVirtualThreadPerTaskExecutor();
 
+    /** 上游 404 宽限：受理后短暂 404 可能是最终一致性抖动，连续 N 次都是 404 才判任务丢失。 */
+    private static final int TASK_NOT_FOUND_GRACE = 4;
+
     /** 优雅停机：等在途轮询最多 30 秒（防止发版掐死在途轮询，交由清扫③回收）。 */
     @PreDestroy
     public void shutdown() {
@@ -93,6 +96,7 @@ public class TaskPoller {
                     .le(GenerateTask::getNextPollTime, now)
                     .set(GenerateTask::getNextPollTime,
                             now.plusNanos(config.getLong(ConfigKeys.POLL_LEASE_MS) * 1_000_000))
+                    .set(GenerateTask::getLastPollAt, now)
                     .set(GenerateTask::getUpdatedAt, now));
             if (rows != 1) {
                 return;
@@ -128,9 +132,29 @@ public class TaskPoller {
             }
             if (e.getKind() == UpstreamErrorKind.TASK_NOT_FOUND
                     || (e.getHttpStatus() != null && e.getHttpStatus() == 404)) {
-                // 上游把任务弄丢了：重试无意义，直接终态（防无效重试打满生命周期）
-                finisher.fail(taskId, "UPSTREAM_TASK_LOST",
-                        "上游任务不存在或已被清理: " + sanitize(e.getMessage(), channel));
+                // 上游 404 可能是受理后的最终一致性抖动或 queryPath 配错，不能一次就杀已付费任务：
+                // 连续 TASK_NOT_FOUND_GRACE 次都是 404 才判丢失终态；任何非 404 轮询都会清零计数
+                int notFound = (task.getNotFoundCount() == null ? 0 : task.getNotFoundCount()) + 1;
+                if (notFound >= TASK_NOT_FOUND_GRACE) {
+                    finisher.fail(taskId, "UPSTREAM_TASK_LOST",
+                            "上游任务不存在或已被清理（连续 " + notFound + " 次 404）: " + sanitize(e.getMessage(), channel));
+                } else {
+                    log.warn("上游返回 404（第 {}/{} 次），宽限重试: taskId={}",
+                            notFound, TASK_NOT_FOUND_GRACE, taskId);
+                    long interval = computeInterval(task.getPollCount() == null ? 0 : task.getPollCount());
+                    taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
+                            .eq(GenerateTask::getId, taskId)
+                            .eq(GenerateTask::getStatus, TaskStatus.RUNNING.name())
+                            .set(GenerateTask::getNotFoundCount, notFound)
+                            .set(GenerateTask::getNextPollTime, LocalDateTime.now().plusNanos(interval * 1_000_000))
+                            .set(GenerateTask::getUpdatedAt, LocalDateTime.now()));
+                }
+                return;
+            }
+            if (e.getKind() == UpstreamErrorKind.BAD_RESPONSE) {
+                // 轮询期收到垃圾响应按网络抖动退避重试（不喂熔断，任务生命周期兜底）
+                log.warn("轮询响应无法解析，按当前间隔重试: taskId={}", taskId);
+                reschedule(task, task.getPollCount() == null ? 0 : task.getPollCount());
                 return;
             }
             if (!e.getKind().isRetryable()) {
@@ -155,13 +179,14 @@ public class TaskPoller {
         }
     }
 
-    /** 状态更新 + 指数退避：initial << pollCount，封顶 max。 */
+    /** 状态更新 + 指数退避：initial << pollCount，封顶 max。非 404 的正常轮询会清零连续 404 计数。 */
     private void reschedule(GenerateTask task, int pollCount) {
         long interval = computeInterval(pollCount);
         taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
                 .eq(GenerateTask::getId, task.getId())
                 .eq(GenerateTask::getStatus, TaskStatus.RUNNING.name())
                 .set(GenerateTask::getPollCount, pollCount)
+                .set(GenerateTask::getNotFoundCount, 0)
                 .set(GenerateTask::getNextPollTime, LocalDateTime.now().plusNanos(interval * 1_000_000))
                 .set(GenerateTask::getUpdatedAt, LocalDateTime.now()));
     }

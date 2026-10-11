@@ -18,6 +18,7 @@ public enum ConfigKeys {
     BREAKER_FAILURE_RATE("breaker.failure_rate", "0.5", "熔断失败率阈值（0-1）"),
     BREAKER_OPEN_MS("breaker.open_ms", "60000", "熔断持续时长（毫秒）"),
     BREAKER_HALF_OPEN_SUCCESS("breaker.half_open_success", "3", "半开恢复所需连续成功次数"),
+    BREAKER_HALF_OPEN_IDLE_MS("breaker.half_open_idle_ms", "120000", "半开停滞多久后不再垫底（回正常排队位置接探测流量，毫秒）"),
 
     RATE_LIMIT_COOLDOWN_MS("rate_limit.cooldown_ms", "30000", "上游 429 后的冷却时长（毫秒）"),
 

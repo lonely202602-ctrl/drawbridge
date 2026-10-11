@@ -23,8 +23,13 @@ import java.util.concurrent.TimeUnit;
  * 崩溃后由兜底清扫回收。扫描是安全网，业务方提交后还会直接 kick 提时延。
  *
  * 优雅停机：@PreDestroy 停止领取并等在途提交最多 30 秒，防止发版掐死在途任务。
- * 回退退避：DB 异常回退按 30s→60s→120s→240s 退避（计数复用 poll_count，受理成功即清零），
- * 同一任务自动重跑超 5 次判 INTERNAL_ERROR 终态——防止确定性错误每秒热循环刷满任务生命周期。
+ * 回退守则：只有确定持有任务（领取成功后链路抛异常）才回退——领取 UPDATE 自身失败
+ * （如连接池打满超时）时归属不明，绝不回退，否则会把别的线程正在调上游的任务打回重跑
+ * （重复提交上游）。领取已落库但返回断连的极端情况会留下无主 RUNNING 任务，
+ * 由兜底清扫②在 stale_minutes 后回收（其时 upstream_request 为空，重跑安全）。
+ * 回退退避：5s→15s→45s→135s→240s（计数用独立列 rerun_count，受理成功即清零），
+ * 自动重跑超 5 次判 INTERNAL_ERROR 终态——确定性错误不该每秒热循环刷满任务生命周期；
+ * 已受理上游（有任务号）的任务即使超限也不判失败，保持 RUNNING 交轮询/清扫。
  */
 @Slf4j
 @Component
@@ -80,29 +85,42 @@ public class SubmitExecutor {
     /** 提交接口创建任务后直接调用（幂等：领取原子性保证只跑一次）。 */
     public void kick(Long taskId) {
         vexec.submit(() -> {
+            int rows;
             try {
-                LocalDateTime now = LocalDateTime.now();
-                int rows = taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
-                        .eq(GenerateTask::getId, taskId)
-                        .eq(GenerateTask::getStatus, TaskStatus.SUBMITTED.name())
-                        .set(GenerateTask::getStatus, TaskStatus.RUNNING.name())
-                        .set(GenerateTask::getNextPollTime,
-                                now.plusNanos(config.getLong(ConfigKeys.SUBMIT_LEASE_MS) * 1_000_000))
-                        .set(GenerateTask::getUpdatedAt, now));
-                if (rows == 1) {
-                    chain.run(taskId);
-                }
+                rows = tryClaim(taskId);
             } catch (Exception e) {
-                log.error("提交任务处理异常，回退待执行: taskId={}", taskId, e);
+                // 领取失败=归属不明：可能别的线程正领着它在调上游，回退会把它的任务打回重跑
+                log.warn("任务领取失败，不回退（等待下轮扫描/兜底清扫）: taskId={}", taskId, e);
+                return;
+            }
+            if (rows != 1) {
+                return;
+            }
+            try {
+                chain.run(taskId);
+            } catch (Exception e) {
+                log.error("提交链路异常，回退待重跑: taskId={}", taskId, e);
                 rollbackClaim(taskId);
             }
         });
     }
 
+    /** 领取：原子把 SUBMITTED 翻成 RUNNING 并推进租约；返回影响行数（1=本线程确定持有）。 */
+    private int tryClaim(Long taskId) {
+        LocalDateTime now = LocalDateTime.now();
+        return taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
+                .eq(GenerateTask::getId, taskId)
+                .eq(GenerateTask::getStatus, TaskStatus.SUBMITTED.name())
+                .set(GenerateTask::getStatus, TaskStatus.RUNNING.name())
+                .set(GenerateTask::getNextPollTime,
+                        now.plusNanos(config.getLong(ConfigKeys.SUBMIT_LEASE_MS) * 1_000_000))
+                .set(GenerateTask::getUpdatedAt, now));
+    }
+
     /**
      * 灾难回退：仅当任务尚未受理上游（无上游任务号）时退回 SUBMITTED。
-     * 回退带退避（复用 poll_count 作重跑计数，受理成功清零），超限判内部错误终态——
-     * 确定性错误（缺列/约束冲突）不该每秒热循环重跑。
+     * 回退带退避（独立列 rerun_count 作重跑计数，受理成功清零），超限判内部错误终态——
+     * 确定性错误（缺列/约束冲突）不该每秒热循环重跑；已受理的任务超限也不判失败。
      */
     private void rollbackClaim(Long taskId) {
         try {
@@ -110,8 +128,14 @@ public class SubmitExecutor {
             if (t == null) {
                 return;
             }
-            int reruns = t.getPollCount() == null ? 0 : t.getPollCount();
+            int reruns = t.getRerunCount() == null ? 0 : t.getRerunCount();
             if (reruns >= MAX_AUTO_RERUNS) {
+                if (t.getUpstreamTaskId() != null) {
+                    // 上游已受理（可能正在出图）：判失败=明明花了钱说没花，保持 RUNNING 交轮询/清扫
+                    log.warn("回退重跑超限但上游已受理，保持 RUNNING: taskId={}, upstreamTaskId={}",
+                            taskId, t.getUpstreamTaskId());
+                    return;
+                }
                 finisher.fail(taskId, "INTERNAL_ERROR", "提交链路连续异常，自动重跑超限，请检查系统状态后重新提交");
                 return;
             }
@@ -127,7 +151,7 @@ public class SubmitExecutor {
                     .eq(GenerateTask::getStatus, TaskStatus.RUNNING.name())
                     .isNull(GenerateTask::getUpstreamTaskId)
                     .set(GenerateTask::getStatus, TaskStatus.SUBMITTED.name())
-                    .set(GenerateTask::getPollCount, reruns + 1)
+                    .set(GenerateTask::getRerunCount, reruns + 1)
                     .set(GenerateTask::getNextPollTime, LocalDateTime.now().plusNanos(backoffMs * 1_000_000))
                     .set(GenerateTask::getUpdatedAt, LocalDateTime.now()));
         } catch (Exception inner) {
