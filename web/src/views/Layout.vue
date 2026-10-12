@@ -36,6 +36,7 @@ const menus = [
   { path: '/groups', icon: '🗂️', title: '模型分组' },
   { path: '/apps', icon: '🔑', title: '令牌' },
   { path: '/tasks', icon: '📋', title: '任务查询' },
+  { path: '/queue-monitor', icon: '🚦', title: '队列监控' },
   { path: '/docs', icon: '📄', title: 'API 文档' },
   { path: '/settings', icon: '⚙️', title: '设置' }
 ]

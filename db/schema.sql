@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS channel (
     api_key_enc     TEXT         NOT NULL COMMENT 'AES-GCM 加密后的上游 Key',
     path_overrides  TEXT         NULL COMMENT '路径覆盖 JSON',
     extra_config    TEXT         NULL COMMENT '适配参数 JSON（异步协议字段指针等）',
-    max_concurrency INT          NULL DEFAULT 5 COMMENT '单渠道并发闸，空=默认',
+    max_concurrency INT          NULL DEFAULT 5 COMMENT '（已废弃，v0.4 起容量在 upstream_account）兼容保留',
+    account_key     VARCHAR(64)  NULL COMMENT '上游账号键 sha256(归一化base_url|apiKey) 前 32 位，保存渠道时计算',
     cost_price      DECIMAL(12, 4) NULL COMMENT '上游成本单价/张（对账用）',
     enabled         TINYINT      NOT NULL DEFAULT 1,
     status          TINYINT      NOT NULL DEFAULT 1 COMMENT '1正常/2熔断/3半开/4余额耗尽停用/0手动停用',
@@ -22,7 +23,28 @@ CREATE TABLE IF NOT EXISTS channel (
     remark          VARCHAR(255) NULL,
     created_at      DATETIME     NOT NULL,
     updated_at      DATETIME     NOT NULL,
-    KEY idx_status (enabled, status)
+    KEY idx_status (enabled, status),
+    KEY idx_account (account_key)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+
+-- 上游账号：同 base_url+apiKey 的渠道共享一个并发池（容量显式配置，0=暂停派发）
+CREATE TABLE IF NOT EXISTS upstream_account (
+    account_key VARCHAR(64)  PRIMARY KEY COMMENT 'sha256(归一化base_url|apiKey) 前 32 位',
+    capacity    INT          NOT NULL DEFAULT 5 COMMENT '该账号同时在跑任务数上限，0=暂停派发',
+    created_at  DATETIME     NOT NULL,
+    updated_at  DATETIME     NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+
+-- 账号级批量关停批次（余额耗尽等）：记录关掉的渠道与联动成员，充值后一键整批恢复
+CREATE TABLE IF NOT EXISTS disable_batch (
+    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    account_key VARCHAR(64)  NOT NULL,
+    reason      VARCHAR(255) NOT NULL,
+    channel_ids TEXT         NOT NULL COMMENT '本次关停的渠道 id JSON 数组',
+    member_ids  TEXT         NOT NULL COMMENT '本次联动停用的分组成员 id JSON 数组',
+    restored_at DATETIME     NULL COMMENT '非空=已整批恢复',
+    created_at  DATETIME     NOT NULL,
+    KEY idx_account (account_key)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 
 -- 渠道上游模型清单（同步/人工录入）
@@ -114,6 +136,7 @@ CREATE TABLE IF NOT EXISTS generate_task (
     UNIQUE KEY uk_task_id (task_id),
     UNIQUE KEY uk_token_request (token_id, client_request_id),
     KEY idx_status_nextpoll (status, next_poll_time),
+    KEY idx_group_status (group_code, status),
     KEY idx_expires (status, expires_at),
     KEY idx_token_created (token_id, created_at),
     KEY idx_created (created_at)

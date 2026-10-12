@@ -8,6 +8,7 @@ import com.drawbridge.domain.mapper.GenerateTaskMapper;
 import com.drawbridge.domain.mapper.UsageLogMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -17,6 +18,7 @@ import java.util.List;
 /**
  * 任务终态推进（提交链路/轮询链路/兜底清扫共用）：
  * 终态 + 用量流水在同一个事务里原子写入（带状态前置条件，防并发双写）。
+ * 写成功后发布 TaskSettledEvent（事务提交后触发）——派发器据此立即补位释放的槽位。
  * drawbridge 是纯网关：不计价、不扣费、不冻结，用量流水只做成功/失败统计。
  */
 @Slf4j
@@ -26,6 +28,7 @@ public class TaskFinisher {
 
     private final GenerateTaskMapper taskMapper;
     private final UsageLogMapper usageLogMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @org.springframework.transaction.annotation.Transactional
     public void complete(Long taskId, List<String> urls, boolean inlineB64) {
@@ -61,6 +64,7 @@ public class TaskFinisher {
             return;
         }
         insertUsage(task, 1, null);
+        eventPublisher.publishEvent(new TaskSettledEvent(taskId, true));
         log.info("任务成功: taskId={}, urls={}, inlineB64={}", task.getTaskId(), urls.size(), inlineB64);
     }
 
@@ -82,6 +86,7 @@ public class TaskFinisher {
         }
         GenerateTask fresh = taskMapper.selectById(taskId);
         insertUsage(fresh, 0, errorCode);
+        eventPublisher.publishEvent(new TaskSettledEvent(taskId, false));
         log.warn("任务失败: taskId={}, code={}, msg={}", fresh.getTaskId(), errorCode, errorMsg);
     }
 

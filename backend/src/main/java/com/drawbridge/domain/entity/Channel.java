@@ -34,8 +34,11 @@ public class Channel {
     /** 其它适配参数 JSON：如异步协议的字段指针 flavor/submitPath/queryPath/idField/statusField/urlField */
     private String extraConfig;
 
-    /** 单渠道并发闸（默认 5，见 ConfigKeys） */
+    /** 单渠道并发闸（v0.4 起废弃，容量在 upstream_account；列保留兼容） */
     private Integer maxConcurrency;
+
+    /** 上游账号键 sha256(归一化base_url|apiKey) 前 32 位；保存渠道时由应用计算写入 */
+    private String accountKey;
 
     /** 上游成本单价/张（对账用，可空） */
     private BigDecimal costPrice;

@@ -4,6 +4,7 @@ import com.drawbridge.common.JsonUtil;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -13,6 +14,19 @@ class ErrorClassifierTest {
 
     private UpstreamCallException openAi(int status, String body) {
         return ErrorClassifier.fromOpenAi(status, JsonUtil.readTree(body));
+    }
+
+    @Test
+    void accountScopeOnlyOnExplicitBalanceSignals() {
+        // 精确余额信号（429/403 + 明确文案）→ 账号级批量停用
+        assertTrue(openAi(429, "{\"error\":{\"message\":\"该令牌额度已用尽\"}}").isAccountScope());
+        assertTrue(openAi(403, "{\"error\":{\"message\":\"用户额度不足，请充值\"}}").isAccountScope());
+        assertTrue(ErrorClassifier.fromCrunCode(403, "余额不足").isAccountScope());
+
+        // 结构化字段命中与宽文案兜底 → 维持单渠道停用（防误判放大到整个账号）
+        assertFalse(openAi(403, "{\"error\":{\"message\":\"x\",\"type\":\"insufficient_quota\","
+                + "\"code\":\"insufficient_quota\"}}").isAccountScope());
+        assertFalse(openAi(400, "{\"error\":{\"message\":\"账户余额不足，请充值\"}}").isAccountScope());
     }
 
     @Test

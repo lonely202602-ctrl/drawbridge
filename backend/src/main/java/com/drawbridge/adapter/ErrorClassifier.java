@@ -74,7 +74,7 @@ public final class ErrorClassifier {
         // ② 状态码（①已拦结构化没米信号；这里只留无歧义的窄识别，防真没米/容量波动被埋掉）
         if (status == 429) {
             if (BALANCE_EXPLICIT.matcher(message).find()) {
-                return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, status);
+                return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, status, true);
             }
             return new UpstreamCallException(UpstreamErrorKind.RATE_LIMITED, message, status);
         }
@@ -83,7 +83,7 @@ public final class ErrorClassifier {
         }
         if (status == 403) {
             if (BALANCE_EXPLICIT.matcher(message).find()) {
-                return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, status);
+                return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, status, true);
             }
             if (MODEL_PERM.matcher(message).find()) {
                 // 模型级权限（Key 有效，单模型无权）：换渠道，不停渠道
@@ -152,7 +152,7 @@ public final class ErrorClassifier {
         if (code == 403) {
             // 与 OpenAI 族对齐：窄没米 → 模型权限 → 审核拒绝 → 拒绝访问（喂熔断换渠道），不判参数错误终态
             if (BALANCE_EXPLICIT.matcher(message).find()) {
-                return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, code);
+                return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, code, true);
             }
             if (MODEL_PERM.matcher(message).find()) {
                 return new UpstreamCallException(UpstreamErrorKind.MODEL_NOT_PERMITTED, message, code);

@@ -16,6 +16,7 @@ import com.drawbridge.infrastructure.config.ChannelConfigService;
 import com.drawbridge.infrastructure.config.ConfigKeys;
 import com.drawbridge.infrastructure.config.SystemConfigService;
 import com.drawbridge.openapi.dto.OpenApiDtos;
+import com.drawbridge.task.QueueDeadlines;
 import com.drawbridge.task.SubmitExecutor;
 import com.drawbridge.task.TaskStatus;
 import jakarta.validation.Valid;
@@ -122,6 +123,18 @@ public class OpenApiController {
             }
         }
 
+        // 单令牌排队上限：排队世界的背压阀——一个令牌突发灌单，到上限即拒，同分组其他接入方不被淹
+        int maxQueued = config.getInt(ConfigKeys.TOKEN_MAX_QUEUED);
+        if (maxQueued > 0) {
+            Long queued = taskMapper.selectCount(Wrappers.<GenerateTask>lambdaQuery()
+                    .eq(GenerateTask::getTokenId, ctx.token().getId())
+                    .eq(GenerateTask::getStatus, TaskStatus.SUBMITTED.name()));
+            if (queued != null && queued >= maxQueued) {
+                throw new BizException(ErrorCode.TOO_MANY_QUEUED,
+                        "该令牌排队任务已达上限（" + maxQueued + "），请等待在途任务完成后再提交");
+            }
+        }
+
         GenerateTask task = new GenerateTask();
         task.setTaskId(Ids.newTaskId());
 
@@ -134,7 +147,10 @@ public class OpenApiController {
         task.setClientRequestId(idemKey);
         LocalDateTime now = LocalDateTime.now();
         task.setNextPollTime(now);
-        task.setExpiresAt(now.plusNanos(config.getLong(ConfigKeys.TASK_MAX_LIFETIME_MS) * 1_000_000));
+        // expires_at 双语义（SUBMITTED=排队死线）：超时由兜底清扫判 QUEUE_WAIT_TIMEOUT；
+        // 领取渠道时改写为执行死线（领取时刻 + max_lifetime）
+        task.setExpiresAt(QueueDeadlines.queueDeadline(now,
+                config.getLong(ConfigKeys.TASK_QUEUE_MAX_WAIT_MS)));
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
         try {

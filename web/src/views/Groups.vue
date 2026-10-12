@@ -180,7 +180,8 @@ const strategies = [
   { value: 'FAILOVER', label: '故障转移' },
   { value: 'POLLING', label: '轮询' },
   { value: 'RANDOM', label: '随机' },
-  { value: 'WEIGHTED', label: '加权分配' }
+  { value: 'WEIGHTED', label: '加权分配' },
+  { value: 'IDLE_FIRST', label: '空闲优先' }
 ]
 const groups = ref([])
 const channels = ref([])
@@ -195,10 +196,11 @@ const dragIndex = ref(-1)
 
 const strategyLabel = v => strategies.find(s => s.value === v)?.label || '按成员顺序故障转移'
 const strategyHint = v => ({
-  FAILOVER: '按序号顺序：1 号优先，失败才轮到下一成员',
-  POLLING: '成员轮流接单，均匀分配',
-  RANDOM: '每次随机挑一个成员',
-  WEIGHTED: '按权重比例分配流量'
+  FAILOVER: '按序号顺序：1 号优先，饱和时排队等待（不跳槽），失败才轮到下一成员',
+  POLLING: '成员轮流接单，均匀分配；饱和的成员自动跳过',
+  RANDOM: '每次随机挑一个成员；饱和的成员自动跳过',
+  WEIGHTED: '按权重比例分配流量；饱和的成员自动跳过',
+  IDLE_FIRST: '按序号顺序取第一个有空闲并发的成员；全满时排队等待'
 }[v] || '')
 
 async function load() {

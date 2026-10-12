@@ -125,8 +125,14 @@ public class TaskPoller {
             if (channel != null && (e.getKind() == UpstreamErrorKind.BALANCE_EXHAUSTED
                     || e.getKind() == UpstreamErrorKind.AUTH_FAILED)) {
                 // 轮询期才发现没米/Key 失效：任务已受理不能重试，停渠道 + 任务失败（精确分类，保留自动停用）
-                channelOps.autoDisable(channel.getId(),
-                        e.getKind() == UpstreamErrorKind.BALANCE_EXHAUSTED ? "上游余额耗尽，自动停用" : "上游 Key 失效/被拒，自动停用");
+                String reason = e.getKind() == UpstreamErrorKind.BALANCE_EXHAUSTED
+                        ? "上游余额耗尽，自动停用" : "上游 Key 失效/被拒，自动停用";
+                if (e.getKind() == UpstreamErrorKind.BALANCE_EXHAUSTED && e.isAccountScope()) {
+                    // 精确余额信号：同账号渠道批量停用（充值后整批恢复）
+                    channelOps.autoDisableAccount(channel.getAccountKey(), reason);
+                } else {
+                    channelOps.autoDisable(channel.getId(), reason);
+                }
                 finisher.fail(taskId, "UPSTREAM_TASK_FAILED", sanitize(e.getMessage(), channel));
                 return;
             }

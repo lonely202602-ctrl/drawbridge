@@ -22,7 +22,7 @@
           <span class="badge" :class="statusBadge(row)">{{ statusText(row) }}</span>
         </div>
         <div class="hint" style="margin: 8px 0 4px; word-break: break-all">🔗 {{ row.baseUrl }}</div>
-        <div class="hint">Key {{ row.keyConfigured ? '已配置' : '未配置' }} · 并发 {{ row.maxConcurrency || 5 }}
+        <div class="hint">Key {{ row.keyConfigured ? '已配置' : '未配置' }} · 账号池并发 {{ row.accountCapacity ?? 5 }}
           <span v-if="row.statusReason"> · {{ row.statusReason }}</span></div>
         <div style="display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap">
           <button class="btn ghost sm" @click="testRun(row)">试跑</button>
@@ -93,8 +93,9 @@
           </div>
           <label>API Key</label>
           <input v-model="w.apiKey" class="input" type="password" placeholder="上游密钥，加密存储" autocomplete="new-password" />
-          <label>并发上限</label>
-          <input v-model.number="w.maxConcurrency" class="input" type="number" min="1" max="100" style="width: 120px" />
+          <label>账号并发容量</label>
+          <input v-model.number="w.maxConcurrency" class="input" type="number" min="0" max="1000" style="width: 120px" />
+          <div class="hint" style="margin-top: 4px">同一 base_url + Key 的渠道共享一个并发池（该值对所有同 Key 渠道生效）；0 = 暂停派发</div>
           <label>备注</label>
           <input v-model="w.remark" class="input" />
 

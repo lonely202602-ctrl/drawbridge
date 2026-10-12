@@ -41,25 +41,37 @@ public class StuckSweeper {
     void doSweep() {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime staleBefore = now.minusMinutes(config.getInt(ConfigKeys.TASK_STALE_MINUTES));
+        long queueMaxWaitMs = config.getLong(ConfigKeys.TASK_QUEUE_MAX_WAIT_MS);
 
-        // ① 超时终态（先于其它处理，防僵死任务被重扫）
+        // ① 超时终态（先于其它处理，防僵死任务被重扫）。
+        // expires_at 双语义：RUNNING=执行死线（TIMEOUT）；SUBMITTED=排队死线（QUEUE_WAIT_TIMEOUT）
         List<GenerateTask> expired = taskMapper.selectList(Wrappers.<GenerateTask>lambdaQuery()
-                .select(GenerateTask::getId)
+                .select(GenerateTask::getId, GenerateTask::getStatus)
                 .in(GenerateTask::getStatus, TaskStatus.SUBMITTED.name(), TaskStatus.RUNNING.name())
                 .lt(GenerateTask::getExpiresAt, now)
                 .last("limit 200"));
-        expired.forEach(t -> finisher.fail(t.getId(), "TIMEOUT", "任务超过最大生命周期"));
+        expired.forEach(t -> {
+            if (TaskStatus.RUNNING.name().equals(t.getStatus())) {
+                finisher.fail(t.getId(), "TIMEOUT", "任务超过执行生命周期");
+            } else {
+                finisher.fail(t.getId(), "QUEUE_WAIT_TIMEOUT", "排队等待超时，请稍后重新提交");
+            }
+        });
 
         // ② 提交链路崩溃残留（未受理上游，可安全重跑）。
         // 判据：upstream_request 为空 = 从未到达发送点（请求体在调用上游前已落档）；
         // 已存档的任务不自动重跑——上游可能已受理，重发会重复扣费，交给 ① 超时终态 + 人工按存档介入。
+        // 退回 SUBMITTED 同时把 expires_at 恢复为排队死线（created_at + queue_max_wait，SQL 侧按行计算）
         taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
                 .eq(GenerateTask::getStatus, TaskStatus.RUNNING.name())
                 .isNull(GenerateTask::getUpstreamTaskId)
                 .isNull(GenerateTask::getUpstreamRequest)
                 .lt(GenerateTask::getUpdatedAt, staleBefore)
                 .set(GenerateTask::getStatus, TaskStatus.SUBMITTED.name())
+                .set(GenerateTask::getChannelId, null)
                 .set(GenerateTask::getNextPollTime, now)
+                .apply("expires_at = DATE_ADD(created_at, INTERVAL {0} MICROSECOND)",
+                        queueMaxWaitMs > 0 ? queueMaxWaitMs * 1000 : 100L * 365 * 24 * 3600 * 1000 * 1000)
                 .set(GenerateTask::getUpdatedAt, now));
 
         // ③ 轮询链路崩溃残留（租约丢失，重置轮询时间）

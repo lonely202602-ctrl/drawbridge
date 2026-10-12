@@ -15,6 +15,7 @@ const router = createRouter({
         { path: 'groups', component: () => import('./views/Groups.vue'), meta: { title: '模型分组', sub: '分组 = 业务方调用的 model 名；一个分组挂多个上游成员互为备份，点策略标签即时切换' } },
         { path: 'apps', component: () => import('./views/Apps.vue'), meta: { title: '令牌', sub: '发令牌 = 起个名 + 选授权分组；SK 加密存储，可随时查看' } },
         { path: 'tasks', component: () => import('./views/Tasks.vue'), meta: { title: '任务查询', sub: '任务详情含重试时间线、业务方请求体、上游请求体与响应结果' } },
+        { path: 'queue-monitor', component: () => import('./views/QueueMonitor.vue'), meta: { title: '队列监控', sub: '每个上游账号的并发占用与排队积压，5 秒自动刷新' } },
         { path: 'settings', component: () => import('./views/Settings.vue'), meta: { title: '设置', sub: '运营参数，保存即热更新生效，无需重启' } },
         { path: 'docs', component: () => import('./views/ApiDocs.vue'), meta: { title: 'API 文档', sub: '业务方快速接入：可复制的 curl 测试脚本（model 自动带出你的分组）' } }
       ]

@@ -9,6 +9,7 @@ import com.drawbridge.domain.entity.Channel;
 import com.drawbridge.domain.entity.UpstreamModel;
 import com.drawbridge.domain.mapper.ChannelMapper;
 import com.drawbridge.domain.mapper.UpstreamModelMapper;
+import com.drawbridge.health.AccountRegistry;
 import com.drawbridge.health.ChannelHealthTracker;
 import com.drawbridge.health.ChannelOpsService;
 import com.drawbridge.health.CooldownRegistry;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
@@ -53,6 +55,7 @@ public class ChannelAdminController {
     private final ChannelHealthTracker healthTracker;
     private final CooldownRegistry cooldownRegistry;
     private final UpstreamHttp http;
+    private final AccountRegistry accountRegistry;
 
     public record ChannelUpsertRequest(
             @NotBlank String name,
@@ -80,6 +83,8 @@ public class ChannelAdminController {
                     m.put("pathOverrides", c.getPathOverrides());
                     m.put("extraConfig", c.getExtraConfig());
                     m.put("maxConcurrency", c.getMaxConcurrency());
+                    m.put("accountKey", c.getAccountKey() == null ? "" : AccountRegistry.shortKey(c.getAccountKey()));
+                    m.put("accountCapacity", c.getAccountKey() == null ? null : accountRegistry.capacityOf(c.getAccountKey()));
                     m.put("enabled", c.getEnabled());
                     m.put("status", c.getStatus());
                     m.put("statusReason", c.getStatusReason() == null ? "" : c.getStatusReason());
@@ -102,6 +107,12 @@ public class ChannelAdminController {
             throw new BizException(ErrorCode.PARAM_INVALID, "API Key 不能为空");
         }
         channel.setApiKeyEnc(cipher.encrypt(body.apiKey()));
+        // 上游账号键：保存时计算（明文在手）；容量取管理端填的并发数（未填走默认）
+        channel.setAccountKey(accountRegistry.computeKey(channel.getBaseUrl(), body.apiKey()));
+        accountRegistry.ensureAccount(channel.getAccountKey());
+        if (body.maxConcurrency() != null) {
+            accountRegistry.setCapacity(channel.getAccountKey(), body.maxConcurrency());
+        }
         LocalDateTime now = LocalDateTime.now();
         channel.setEnabled(1);
         channel.setStatus(ChannelHealthTracker.NORMAL);
@@ -113,20 +124,40 @@ public class ChannelAdminController {
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<Void> update(@PathVariable Long id, @Validated @RequestBody ChannelUpsertRequest body) {
+    public ApiResponse<Map<String, Object>> update(@PathVariable Long id,
+                                                   @Validated @RequestBody ChannelUpsertRequest body) {
         validateProtocol(body.protocol());
         Channel channel = channelMapper.selectById(id);
         if (channel == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "渠道不存在");
         }
+        String oldAccountKey = channel.getAccountKey();
         apply(channel, body);
-        if (body.apiKey() != null && !body.apiKey().isBlank()) {
-            channel.setApiKeyEnc(cipher.encrypt(body.apiKey()));
+        // 账号键重算：新 Key 用明文；未重传 Key 但改了 base_url 也可能换账号（用存量密文解密计算）
+        String keySource = body.apiKey() != null && !body.apiKey().isBlank()
+                ? body.apiKey() : cipher.decrypt(channel.getApiKeyEnc());
+        channel.setAccountKey(accountRegistry.computeKey(channel.getBaseUrl(), keySource));
+        accountRegistry.ensureAccount(channel.getAccountKey());
+        boolean accountChanged = oldAccountKey != null && !oldAccountKey.equals(channel.getAccountKey());
+        if (accountChanged) {
+            // 换 Key/换地址 = 换账号：把管理员配过的容量带过去，避免悄悄回默认值
+            int carried = accountRegistry.capacityOf(oldAccountKey);
+            if (carried > 0 && accountRegistry.capacityOf(channel.getAccountKey()) == 0) {
+                accountRegistry.setCapacity(channel.getAccountKey(), carried);
+            }
+        }
+        if (body.maxConcurrency() != null) {
+            accountRegistry.setCapacity(channel.getAccountKey(), body.maxConcurrency());
         }
         channel.setUpdatedAt(LocalDateTime.now());
         channelMapper.updateById(channel);
         configService.refresh();
-        return ApiResponse.ok();
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("accountChanged", accountChanged);
+        if (accountChanged) {
+            result.put("notice", "上游身份已变化（Key 或 base_url 变更），并发容量已迁移到新账号池，请确认各渠道共享关系");
+        }
+        return ApiResponse.ok(result);
     }
 
     @PostMapping("/{id}/enable")
@@ -139,6 +170,28 @@ public class ChannelAdminController {
     public ApiResponse<Void> disable(@PathVariable Long id,
                                      @RequestBody(required = false) Map<String, String> body) {
         channelOps.disable(id, body == null ? "手动停用" : body.getOrDefault("reason", "手动停用"));
+        return ApiResponse.ok();
+    }
+
+    /** 关停批次列表（账号级批量停用的待恢复记录，余额充值后整批恢复用）。 */
+    @GetMapping("/disable-batches")
+    public ApiResponse<List<Map<String, Object>>> pendingBatches(@RequestParam(required = false) String accountKey) {
+        var batches = channelOps.pendingBatches(accountKey);
+        return ApiResponse.ok(batches.stream().map(b -> {
+            Map<String, Object> m = new java.util.HashMap<String, Object>();
+            m.put("id", b.getId());
+            m.put("accountKey", AccountRegistry.shortKey(b.getAccountKey()));
+            m.put("reason", b.getReason());
+            m.put("createdAt", b.getCreatedAt());
+            m.put("restoredAt", b.getRestoredAt());
+            return m;
+        }).toList());
+    }
+
+    /** 整批恢复：恢复该批次全部渠道与联动停用的分组成员。 */
+    @PostMapping("/disable-batches/{id}/restore")
+    public ApiResponse<Void> restoreBatch(@PathVariable Long id) {
+        channelOps.restoreBatch(id);
         return ApiResponse.ok();
     }
 

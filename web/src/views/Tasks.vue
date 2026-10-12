@@ -4,17 +4,20 @@
       <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end">
         <div class="field" style="margin: 0">
           <label>任务号</label>
-          <input v-model="query.taskId" class="input" placeholder="模糊搜索" style="width: 200px" />
+          <input v-model="draft.taskId" class="input" placeholder="模糊搜索" style="width: 200px" />
         </div>
         <div class="field" style="margin: 0">
           <label>状态</label>
-          <XSelect v-model="query.status" clearable :options="statusOptions" style="width: 150px" />
+          <XSelect v-model="draft.status" clearable :options="statusOptions" style="width: 150px" />
         </div>
         <div class="field" style="margin: 0">
           <label>分组</label>
-          <input v-model="query.groupCode" class="input" placeholder="分组编码" style="width: 130px" />
+          <input v-model="draft.groupCode" class="input" placeholder="分组编码" style="width: 130px" />
         </div>
-        <button class="btn primary" @click="load(1)">查询</button>
+        <button class="btn primary" @click="search">查询</button>
+        <label class="hint" style="display: flex; align-items: center; gap: 6px; margin: 0 0 2px; cursor: pointer; user-select: none">
+          <input type="checkbox" v-model="auto" /> 每 5 秒自动刷新，新任务自动亮起
+        </label>
       </div>
     </div>
 
@@ -27,7 +30,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in rows" :key="row.id">
+          <tr v-for="row in rows" :key="row.id" class="row-in">
             <td class="mono">{{ row.taskId }}</td>
             <td>{{ row.groupCode }}</td>
             <td><span class="tag" :class="{ SUCCEEDED: 'g', FAILED: 'r', RUNNING: 'o', SUBMITTED: 'gr' }[row.status]">{{ row.status }}</span></td>
@@ -46,9 +49,9 @@
     </div>
 
     <div class="pager">
-      <button :disabled="query.page <= 1" @click="load(query.page - 1)">‹</button>
-      <span>第 {{ query.page }} 页 / 共 {{ totalPages || 1 }} 页 · {{ total }} 条</span>
-      <button :disabled="query.page >= totalPages" @click="load(query.page + 1)">›</button>
+      <button :disabled="applied.page <= 1" @click="load(applied.page - 1)">‹</button>
+      <span>第 {{ applied.page }} 页 / 共 {{ totalPages || 1 }} 页 · {{ total }} 条</span>
+      <button :disabled="applied.page >= totalPages" @click="load(applied.page + 1)">›</button>
     </div>
 
     <!-- 任务详情：重试时间线 + 双向请求体 + 结果 -->
@@ -107,29 +110,52 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import XDialog from '../components/XDialog.vue'
 import XSelect from '../components/XSelect.vue'
 import api, { unwrap } from '../api'
 
 const rows = ref([])
 const total = ref(0)
-const query = reactive({ page: 1, size: 20, status: '', groupCode: '', taskId: '' })
+const auto = ref(true)
+// draft = 输入框草稿；applied = 已生效条件（自动刷新按 applied 重查，打了一半的词不会被误当条件）
+const draft = reactive({ status: '', groupCode: '', taskId: '' })
+const applied = reactive({ page: 1, size: 20, status: '', groupCode: '', taskId: '' })
 const detailVisible = ref(false)
 const detail = ref(null)
 const statusOptions = ['SUBMITTED', 'RUNNING', 'SUCCEEDED', 'FAILED'].map(s => ({ label: s, value: s }))
-const totalPages = computed(() => Math.ceil(total.value / query.size))
+const totalPages = computed(() => Math.ceil(total.value / applied.size))
 
 async function load(page) {
-  if (page) query.page = page
-  const data = await unwrap(api.get('/admin/tasks', { params: { ...query } }))
+  if (page) applied.page = page
+  const data = await unwrap(api.get('/admin/tasks', { params: { ...applied } }))
   rows.value = data.records
   total.value = data.total
+}
+
+function search() {
+  Object.assign(applied, { ...draft, page: 1 })
+  load()
 }
 
 async function openDetail(row) {
   detail.value = await unwrap(api.get(`/admin/tasks/detail/${row.id}`))
   detailVisible.value = true
+}
+
+/** 自动刷新节拍：详情弹窗开着时不动列表，只续非终态任务的详情（轮询次数/时间线跟着走） */
+async function tick() {
+  if (!auto.value) return
+  try {
+    if (detailVisible.value && detail.value) {
+      const st = detail.value.task.status
+      if (st === 'SUBMITTED' || st === 'RUNNING') {
+        detail.value = await unwrap(api.get(`/admin/tasks/detail/${detail.value.task.id}`))
+      }
+      return
+    }
+    await load()
+  } catch (e) { /* 单次刷新失败静默，下个节拍再试 */ }
 }
 
 function pretty(json) {
@@ -145,7 +171,12 @@ function fmtTime(t) {
   return t ? String(t).replace('T', ' ').slice(0, 19) : '-'
 }
 
-onMounted(() => load())
+let timer = null
+onMounted(() => {
+  load()
+  timer = setInterval(tick, 5000)
+})
+onBeforeUnmount(() => clearInterval(timer))
 </script>
 
 <style scoped>
@@ -160,5 +191,15 @@ onMounted(() => load())
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
+}
+/* 新任务插入动画：滑入 + 绿光渐隐（按 key 挂载时只播一次，老行复用 DOM 不重播） */
+.row-in { animation: row-slide 0.4s ease-out, row-glow 1.8s ease-out; }
+@keyframes row-slide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes row-glow {
+  0% { background-color: var(--accent-wash, #eef3ea); }
+  100% { background-color: transparent; }
 }
 </style>

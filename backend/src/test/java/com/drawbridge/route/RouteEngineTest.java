@@ -84,12 +84,52 @@ class RouteEngineTest {
     }
 
     @Test
-    void pollingRotates() {
+    void pollingRotatesOnlyOnClaimNotOnEvaluation() {
         RouteEngine e = engine("POLLING");
+        // v0.4：candidatesFor 是纯函数——反复评估不推进轮转（排队任务每秒评估一次，副作用推进=空转）
         assertEquals(List.of(1L, 2L, 3L), ids(e.candidatesFor("image2.5")));
+        assertEquals(List.of(1L, 2L, 3L), ids(e.candidatesFor("image2.5")), "纯评估不应推进轮转");
+
+        // 只有领取成功（recordServed 记实际选中成员）才推进
+        e.recordServed(10L, 1001L); // 成员 id = groupId*100 + channelId
         assertEquals(List.of(2L, 3L, 1L), ids(e.candidatesFor("image2.5")));
+        e.recordServed(10L, 1002L);
         assertEquals(List.of(3L, 1L, 2L), ids(e.candidatesFor("image2.5")));
+        e.recordServed(10L, 1003L);
         assertEquals(List.of(1L, 2L, 3L), ids(e.candidatesFor("image2.5")));
+    }
+
+    @Test
+    void idleFirstKeepsMemberOrder() {
+        assertEquals(List.of(1L, 2L, 3L), ids(engine("IDLE_FIRST").candidatesFor("image2.5")),
+                "空闲优先的排序 = 成员顺序（跳满在派发器选候选时做）");
+    }
+
+    @Test
+    void candidateStateDistinguishesStructuralFromTemporary() {
+        // 全渠道冷却 → 暂时性（该等）
+        cooldown.cool(1L);
+        cooldown.cool(2L);
+        cooldown.cool(3L);
+        assertEquals(RouteEngine.Availability.TEMPORARY_DOWN,
+                engine("FAILOVER").candidateState("image2.5").state());
+
+        // 渠道全停用 → 结构性（该立即失败）
+        channelA.setEnabled(0);
+        channelB.setEnabled(0);
+        channelC.setEnabled(0);
+        configService.refresh();
+        assertEquals(RouteEngine.Availability.STRUCTURAL_DOWN,
+                engine("FAILOVER").candidateState("image2.5").state());
+
+        // 分组停用 → 结构性（先恢复渠道，隔离变量）
+        channelA.setEnabled(1);
+        channelB.setEnabled(1);
+        channelC.setEnabled(1);
+        configService.groupByCode("image2.5").setEnabled(0);
+        configService.refresh();
+        assertEquals(RouteEngine.Availability.STRUCTURAL_DOWN,
+                engine("FAILOVER").candidateState("image2.5").state());
     }
 
     @Test

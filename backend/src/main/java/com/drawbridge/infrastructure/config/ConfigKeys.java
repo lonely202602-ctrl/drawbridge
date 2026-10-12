@@ -8,10 +8,8 @@ import lombok.Getter;
 @Getter
 public enum ConfigKeys {
 
-    ROUTE_MAX_CHANNEL_ATTEMPTS("route.max_channel_attempts", "4", "单请求最多尝试的渠道数"),
-    ROUTE_TIME_BUDGET_MS("route.time_budget_ms", "60000", "单请求路由重试时间预算（毫秒）"),
-    ROUTE_GLOBAL_CONCURRENCY("route.global_concurrency", "64", "全网上游调用并发上限"),
-    ROUTE_PERMIT_WAIT_MS("route.permit_wait_ms", "2000", "等待渠道并发闸的最长时间（毫秒）"),
+    ROUTE_MAX_CHANNEL_ATTEMPTS("route.max_channel_attempts", "4", "单任务最多尝试的渠道数（跨排队重入累计）"),
+    ROUTE_GLOBAL_CONCURRENCY("route.global_concurrency", "256", "全网在途任务数上限（RUNNING 行总数，兜底防失控）"),
 
     BREAKER_WINDOW_MS("breaker.window_ms", "60000", "熔断统计滑窗（毫秒）"),
     BREAKER_MIN_SAMPLES("breaker.min_samples", "20", "触发熔断的最小样本数"),
@@ -30,8 +28,11 @@ public enum ConfigKeys {
     POLL_LEASE_MS("poll.lease_ms", "15000", "轮询领取租约时长（毫秒）"),
     SUBMIT_LEASE_MS("submit.lease_ms", "90000", "提交链路领取租约时长（毫秒），需大于重试时间预算"),
 
-    TASK_MAX_LIFETIME_MS("task.max_lifetime_ms", "900000", "任务最大生命周期（毫秒），超时判失败"),
+    TASK_MAX_LIFETIME_MS("task.max_lifetime_ms", "900000", "任务执行生命周期（毫秒），领取渠道时起算，超时判失败"),
+    TASK_QUEUE_MAX_WAIT_MS("task.queue_max_wait_ms", "1800000", "排队等待上限（毫秒），从提交时刻起算，超时判 QUEUE_WAIT_TIMEOUT；0=不限"),
     TASK_STALE_MINUTES("task.stale_minutes", "10", "任务停滞多久后由兜底清扫重扫（分钟）"),
+
+    TOKEN_MAX_QUEUED("token.max_queued", "20", "单令牌最大排队任务数（提交时校验，超出即拒），0=不限"),
 
     RETENTION_TASK_DAYS("retention.task_days", "7", "任务记录保留天数"),
     RETENTION_BODY_MAX_BYTES("retention.body_max_bytes", "32768", "上游请求存档截断上限（字节）；只影响存档展示，实际按 ≤65KB 钳制，非法值回退 32KB"),
