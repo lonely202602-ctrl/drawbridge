@@ -61,7 +61,8 @@ public class StuckSweeper {
         // ② 提交链路崩溃残留（未受理上游，可安全重跑）。
         // 判据：upstream_request 为空 = 从未到达发送点（请求体在调用上游前已落档）；
         // 已存档的任务不自动重跑——上游可能已受理，重发会重复扣费，交给 ① 超时终态 + 人工按存档介入。
-        // 退回 SUBMITTED 同时把 expires_at 恢复为排队死线（created_at + queue_max_wait，SQL 侧按行计算）
+        // 退回 SUBMITTED 同时把 expires_at 恢复为排队死线（created_at + queue_max_wait，SQL 侧按行计算）；
+        // expires_at 必须走 setSql 落 SET——曾误用 .apply() 被拼进 WHERE，清扫从未生效过
         taskMapper.update(null, Wrappers.<GenerateTask>lambdaUpdate()
                 .eq(GenerateTask::getStatus, TaskStatus.RUNNING.name())
                 .isNull(GenerateTask::getUpstreamTaskId)
@@ -70,7 +71,7 @@ public class StuckSweeper {
                 .set(GenerateTask::getStatus, TaskStatus.SUBMITTED.name())
                 .set(GenerateTask::getChannelId, null)
                 .set(GenerateTask::getNextPollTime, now)
-                .apply("expires_at = DATE_ADD(created_at, INTERVAL {0} MICROSECOND)",
+                .setSql("expires_at = DATE_ADD(created_at, INTERVAL {0} MICROSECOND)",
                         queueMaxWaitMs > 0 ? queueMaxWaitMs * 1000 : 100L * 365 * 24 * 3600 * 1000 * 1000)
                 .set(GenerateTask::getUpdatedAt, now));
 

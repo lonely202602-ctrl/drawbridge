@@ -11,6 +11,8 @@ public enum ProtocolFamily {
     OPENAI_ASYNC_TASK,
     /** Crun 私有任务协议：CreateTask/TaskInfo，x-api-key，{code,message,data} 壳 */
     CRUN_TASK,
+    /** Gemini 原生 generateContent（apiyi nano 系：gemini-3-pro-image / nano-banana-2.1 等），同步返回 */
+    GEMINI_NATIVE,
     /** 火山方舟 Seedance（视频阶段启用） */
     VOLCANO_ARK
 }

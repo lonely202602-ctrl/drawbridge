@@ -94,6 +94,19 @@
           </template>
         </div>
 
+        <template v-if="detailImages.length">
+          <h4 style="margin: 16px 0 6px">结果图（{{ detailImages.length }} 张 · 点击放大 · 过期失效的不显示）</h4>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap">
+            <template v-for="(u, i) in detailImages" :key="detail.task.id + '-' + i">
+              <img v-if="!imgFailed[i]" :src="u" alt="结果图" @error="onImgError(i)" @click="openImage(u)"
+                   style="max-width: 260px; max-height: 260px; border-radius: 8px; border: 1px solid var(--line); background: #fff; cursor: zoom-in; object-fit: contain" />
+            </template>
+          </div>
+          <div v-if="!visibleImageCount" class="hint" style="margin-top: 4px">
+            结果图已失效（上游临时 URL 过期），原始记录见下方任务响应结果
+          </div>
+        </template>
+
         <h4 style="margin: 16px 0 6px">① 业务方请求体</h4>
         <pre class="json-block">{{ pretty(detail.task.bizRequest) }}</pre>
         <h4 style="margin: 14px 0 6px">② 封装后发上游的请求体</h4>
@@ -140,7 +153,28 @@ function search() {
 
 async function openDetail(row) {
   detail.value = await unwrap(api.get(`/admin/tasks/detail/${row.id}`))
+  imgFailed.value = {}
   detailVisible.value = true
+}
+
+// 结果图：从 result JSON 里取 urls 渲染；上游临时 URL 过期（加载失败）就隐藏该张，全部失效给灰提示
+const imgFailed = ref({})
+const detailImages = computed(() => {
+  const raw = detail.value?.task?.result
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed?.urls) ? parsed.urls.filter(u => typeof u === 'string' && u) : []
+  } catch (e) {
+    return []
+  }
+})
+const visibleImageCount = computed(() => detailImages.value.length - Object.keys(imgFailed.value).length)
+function onImgError(i) {
+  imgFailed.value = { ...imgFailed.value, [i]: true }
+}
+function openImage(u) {
+  if (u.startsWith('http')) window.open(u, '_blank')
 }
 
 /** 自动刷新节拍：详情弹窗开着时不动列表，只续非终态任务的详情（轮询次数/时间线跟着走） */

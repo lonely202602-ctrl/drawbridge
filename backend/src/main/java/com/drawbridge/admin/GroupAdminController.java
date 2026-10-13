@@ -125,6 +125,19 @@ public class GroupAdminController {
                         .ne(ModelGroup::getId, id)) > 0) {
             throw new BizException(ErrorCode.PARAM_INVALID, "分组编码已存在: " + newCode);
         }
+        // 改名会孤儿化在途任务：排队任务按旧编码永远派不出去，在途的按旧编码找不到成员必失败。
+        // 令牌权限有级联（cascadeTokenAllowedGroups），任务没有——有在途任务就先拦下
+        if (!newCode.equals(oldCode)) {
+            Long inflight = taskMapper.selectCount(Wrappers.<com.drawbridge.domain.entity.GenerateTask>lambdaQuery()
+                    .eq(com.drawbridge.domain.entity.GenerateTask::getGroupCode, oldCode)
+                    .in(com.drawbridge.domain.entity.GenerateTask::getStatus,
+                            com.drawbridge.task.TaskStatus.SUBMITTED.name(),
+                            com.drawbridge.task.TaskStatus.RUNNING.name()));
+            if (inflight != null && inflight > 0) {
+                throw new BizException(ErrorCode.PARAM_INVALID,
+                        "该分组还有 " + inflight + " 个在途任务，请等任务终态后再改名（否则旧编码任务将无法派发）");
+            }
+        }
         copy(body, group);
         group.setGroupCode(newCode);
         group.setUpdatedAt(LocalDateTime.now());
@@ -339,6 +352,9 @@ public class GroupAdminController {
         }
         if (body.getEnabled() != null) {
             member.setEnabled(body.getEnabled());
+            // 停用出处：手动开关记 admin（渠道启用/批次恢复不复活）；联动停用记 cascade（见 ChannelOpsService）
+            member.setDisableSource(body.getEnabled() == 1
+                    ? null : com.drawbridge.health.ChannelOpsService.MEMBER_SOURCE_ADMIN);
         }
         member.setUpdatedAt(LocalDateTime.now());
         memberMapper.updateById(member);

@@ -36,13 +36,15 @@ import java.util.stream.Collectors;
  * 提交派发器（DB 当队列）：队列 = SUBMITTED 任务行；槽位 = 上游账号下 RUNNING 行（channel_id 绑定即占用）。
  *
  * 派发规约：
- * - 公平：同组内严格按 created_at 升序逐个领取（队头不满不出队）；提交快路径（kick）只在
- *   "该任务是其分组最早的排队任务"时才直接派发，否则交给派发器按序处理——新提交不插队。
- * - 无批次饿死：每轮先算"哪些账号有空槽"，逐分组取最老队头，满了的账号囤再多任务也遮不住别组。
+ * - 公平：同组内严格按 created_at 升序逐个领取（队头不满不出队，同秒按 id 决先后）；
+ *   提交快路径（kick）只在"同组无更早排队任务、且共享候选账号的他组也无更早排队任务"时才直接派发。
+ * - 组间公平轮：每轮每个分组最多领一条，轮次推进直到没有分组能领——共享账号时
+ *   id 小的分组一次最多占一个新空槽，id 大的分组不会被吸干饿死。
  * - 防超发：选路用 guard.runningByAccount 快照；领取在 DispatchLock 内用 runningOfAccount 现查
  *   （SlotClaims），UPDATE 放锁前提交。
- * - 策略语义：FAILOVER 只看队头首选，饱和 → 等不跳槽（出错才切换）；
- *   POLLING/RANDOM/WEIGHTED/IDLE_FIRST 按序跳过饱和候选取第一个有空槽的。全满 → 留队列等下一轮。
+ * - 策略语义：FAILOVER 第一个健康（容量>0）候选只看队头，饱和 → 等不跳槽（出错才切换），
+ *   被暂停（容量 0）的候选跳过；POLLING/RANDOM/WEIGHTED/IDLE_FIRST 按序跳过饱和候选取第一个有空槽的。
+ *   全满 → 留队列等下一轮。
  * - 轮转记忆只在领取成功时推进（recordServed 记实际选中成员），评估不产生副作用。
  * - 结构性无候选（分组停用/无成员/渠道全停用）→ 排队任务立即判 NO_AVAILABLE_CHANNEL；
  *   暂时性（熔断/429 冷却）→ 留队列等恢复。
@@ -136,8 +138,10 @@ public class SubmitExecutor {
 
     /** 一轮派发（1 秒节拍 / 终态唤醒 / 测试直调）。 */
     public void scanDue() {
-        // 结构性死亡先判：这些任务等不来渠道，立即给明确失败
-        for (ModelGroup group : enabledGroups()) {
+        // 结构性死亡先判：这些任务等不来渠道，立即给明确失败。
+        // 必须遍历"全部"分组——已停用分组的排队任务 candidateState 恒为 STRUCTURAL_DOWN，
+        // 只扫启用组会让它们傻等 30 分钟排队死线（改名在入口拦截，停用在这里收尾）
+        for (ModelGroup group : allGroups()) {
             if (routeEngine.candidateState(group.getGroupCode()).state()
                     == RouteEngine.Availability.STRUCTURAL_DOWN) {
                 failQueuedOfGroup(group.getGroupCode());
@@ -145,46 +149,75 @@ public class SubmitExecutor {
         }
         int globalMax = config.getInt(ConfigKeys.ROUTE_GLOBAL_CONCURRENCY);
         Map<String, Integer> freeByAccount = freeSlotsByAccount();
+        // 本轮路由快照：候选评估不产生副作用，整轮扫描内每分组只评估一次
+        Map<String, RouteEngine.GroupRouting> routingByGroup = new HashMap<>();
         for (ModelGroup group : enabledGroups()) {
             RouteEngine.GroupRouting st = routeEngine.candidateState(group.getGroupCode());
-            if (st.state() != RouteEngine.Availability.OK) {
-                continue; // 结构性已在上面判失败；暂时性（熔断/冷却）留队列等
+            if (st.state() == RouteEngine.Availability.OK) {
+                routingByGroup.put(group.getGroupCode(), st);
+                // 结构性已在上面判失败；暂时性（熔断/冷却）留队列等
             }
-            while (guard.runningTotal() < globalMax) {
-                GenerateTask oldest = oldestQueued(group.getGroupCode());
-                if (oldest == null) {
+        }
+        // 组间公平轮：每轮每个分组最多领一条，直到没有分组能推进。
+        // （曾是"每组 while 抽干空槽"：id 小的分组把共享账号吸干，id 大的分组饿到排队超时）
+        boolean progressed = true;
+        while (progressed && guard.runningTotal() < globalMax) {
+            progressed = false;
+            for (ModelGroup group : enabledGroups()) {
+                if (guard.runningTotal() >= globalMax) {
                     break;
                 }
-                RouteEngine.Candidate pick = selectCandidate(st, freeByAccount);
-                if (pick == null) {
-                    break; // 本组候选全满：队头原地等，绝不出队更不失败
+                RouteEngine.GroupRouting st = routingByGroup.get(group.getGroupCode());
+                if (st == null) {
+                    continue;
                 }
-                SlotClaims.ClaimResult r = slotClaims.claimSubmitted(oldest.getId(), pick.channel());
-                switch (r) {
-                    case CLAIMED -> {
-                        if (st.strategy() == RouteStrategy.POLLING) {
-                            routeEngine.recordServed(st.groupId(), pick.member().getId());
-                        }
-                        freeByAccount.merge(pick.channel().getAccountKey(), -1, Integer::sum);
-                        Long taskId = oldest.getId();
-                        vexec.submit(() -> runChainSafely(taskId));
-                    }
-                    case STALE -> {
-                        // 任务被并发领走/已终态：同组看下一条
-                    }
-                    case NO_SLOT -> {
-                        // 锁内复查发现该账号已满：修正快照，本组本轮结束
-                        freeByAccount.put(pick.channel().getAccountKey(), 0);
-                    }
-                }
-                if (r == SlotClaims.ClaimResult.NO_SLOT) {
-                    break;
+                if (claimOne(group.getGroupCode(), st, freeByAccount)) {
+                    progressed = true;
                 }
             }
         }
     }
 
-    /** 提交接口落库后直接调用（快路径）。公平前置：同组已有更早排队任务时不插队。 */
+    /**
+     * 公平轮内领取该分组队头一条任务。
+     *
+     * @return 是否发生领取（含 STALE——任务被并发处理离开队列，也算本轮进展，防提前收轮）
+     */
+    private boolean claimOne(String groupCode, RouteEngine.GroupRouting st,
+                             Map<String, Integer> freeByAccount) {
+        GenerateTask oldest = oldestQueued(groupCode);
+        if (oldest == null) {
+            return false; // 本组无排队任务
+        }
+        RouteEngine.Candidate pick = selectCandidate(st, freeByAccount);
+        if (pick == null) {
+            return false; // 本组候选全满：队头原地等，绝不出队更不失败
+        }
+        SlotClaims.ClaimResult r = slotClaims.claimSubmitted(oldest.getId(), pick.channel());
+        switch (r) {
+            case CLAIMED -> {
+                if (st.strategy() == RouteStrategy.POLLING) {
+                    routeEngine.recordServed(st.groupId(), pick.member().getId());
+                }
+                freeByAccount.merge(pick.channel().getAccountKey(), -1, Integer::sum);
+                Long taskId = oldest.getId();
+                vexec.submit(() -> runChainSafely(taskId));
+                return true;
+            }
+            case STALE -> {
+                // 任务被并发领走/已终态：下轮自然看到下一条队头
+                return true;
+            }
+            case NO_SLOT -> {
+                // 锁内复查发现该账号已满：修正快照，本组本轮结束
+                freeByAccount.put(pick.channel().getAccountKey(), 0);
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /** 提交接口落库后直接调用（快路径）。公平前置：同组更早任务不插队；共享账号的他组更早任务也不插队。 */
     public void kick(Long taskId) {
         vexec.submit(() -> {
             try {
@@ -192,19 +225,61 @@ public class SubmitExecutor {
                 if (t == null || !TaskStatus.SUBMITTED.name().equals(t.getStatus())) {
                     return;
                 }
+                // 同组严格 FIFO：created_at 是秒级 DATETIME，同一秒内用 id 决先后，否则同秒任务都自认为队头
                 Long older = taskMapper.selectCount(Wrappers.<GenerateTask>lambdaQuery()
                         .eq(GenerateTask::getStatus, TaskStatus.SUBMITTED.name())
                         .eq(GenerateTask::getGroupCode, t.getGroupCode())
                         .ne(GenerateTask::getId, taskId)
-                        .lt(GenerateTask::getCreatedAt, t.getCreatedAt()));
+                        .and(w -> w.lt(GenerateTask::getCreatedAt, t.getCreatedAt())
+                                .or(w2 -> w2.eq(GenerateTask::getCreatedAt, t.getCreatedAt())
+                                        .lt(GenerateTask::getId, t.getId()))));
                 if (older != null && older > 0) {
                     return; // 不插队：派发器按 created_at 顺序处理
+                }
+                if (olderQueuedInSharedAccounts(t)) {
+                    return; // 跨组公平：共享候选账号的他组有更早排队任务，交给派发器公平轮
                 }
                 dispatchOne(t);
             } catch (Exception e) {
                 log.warn("提交快路径派发失败（等扫描兜底）: taskId={}", taskId, e);
             }
         });
+    }
+
+    /** 共享候选账号的其他分组里是否存在更早的排队任务（kick 跨组防插队）。 */
+    private boolean olderQueuedInSharedAccounts(GenerateTask t) {
+        RouteEngine.GroupRouting st = routeEngine.candidateState(t.getGroupCode());
+        if (st.state() != RouteEngine.Availability.OK) {
+            return false;
+        }
+        Set<String> myAccounts = st.candidates().stream()
+                .map(c -> c.channel().getAccountKey())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (myAccounts.isEmpty()) {
+            return false;
+        }
+        List<GenerateTask> olderTasks = taskMapper.selectList(Wrappers.<GenerateTask>lambdaQuery()
+                .select(GenerateTask::getId, GenerateTask::getGroupCode)
+                .eq(GenerateTask::getStatus, TaskStatus.SUBMITTED.name())
+                .ne(GenerateTask::getGroupCode, t.getGroupCode())
+                .le(GenerateTask::getNextPollTime, LocalDateTime.now())
+                .lt(GenerateTask::getCreatedAt, t.getCreatedAt())
+                .last("limit 50"));
+        for (String groupCode : olderTasks.stream().map(GenerateTask::getGroupCode).distinct().toList()) {
+            RouteEngine.GroupRouting other = routeEngine.candidateState(groupCode);
+            if (other.state() != RouteEngine.Availability.OK) {
+                continue;
+            }
+            boolean shares = other.candidates().stream()
+                    .map(c -> c.channel().getAccountKey())
+                    .filter(Objects::nonNull)
+                    .anyMatch(myAccounts::contains);
+            if (shares) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void dispatchOne(GenerateTask t) {
@@ -236,12 +311,16 @@ public class SubmitExecutor {
             return null;
         }
         if (st.strategy() == RouteStrategy.FAILOVER) {
-            RouteEngine.Candidate first = candidates.getFirst();
-            String ak = first.channel().getAccountKey();
-            if (ak == null || guard.capacityOf(ak) <= 0) {
-                return null;
+            // 被暂停（容量 0）的候选是管理员意志，永远等不出空位 → 跳过；
+            // 第一个健康候选仍守 FAILOVER 语义：饱和就等队头，不跳槽（出错才切换）
+            for (RouteEngine.Candidate c : candidates) {
+                String ak = c.channel().getAccountKey();
+                if (ak == null || guard.capacityOf(ak) <= 0) {
+                    continue;
+                }
+                return freeByAccount.getOrDefault(ak, 0) > 0 ? c : null;
             }
-            return freeByAccount.getOrDefault(ak, 0) > 0 ? first : null;
+            return null;
         }
         for (RouteEngine.Candidate c : candidates) {
             String ak = c.channel().getAccountKey();
@@ -290,6 +369,12 @@ public class SubmitExecutor {
                 .orderByAsc(GenerateTask::getCreatedAt)
                 .last("limit " + STRUCTURAL_FAIL_BATCH));
         doomed.forEach(t -> finisher.fail(t.getId(), "NO_AVAILABLE_CHANNEL", "该模型暂无可用上游渠道"));
+    }
+
+    private List<ModelGroup> allGroups() {
+        return configService.current().groupsByCode().values().stream()
+                .sorted(Comparator.comparing(ModelGroup::getId))
+                .toList();
     }
 
     private List<ModelGroup> enabledGroups() {
@@ -353,6 +438,8 @@ public class SubmitExecutor {
                     .isNull(GenerateTask::getUpstreamTaskId)
                     .set(GenerateTask::getStatus, TaskStatus.SUBMITTED.name())
                     .set(GenerateTask::getChannelId, null)
+                    // 同退队语义：清上次尝试存档，保持"重领后崩溃仍在清扫②射程内"（尝试级存档在 task_attempt）
+                    .set(GenerateTask::getUpstreamRequest, null)
                     .set(GenerateTask::getRerunCount, reruns + 1)
                     .set(GenerateTask::getNextPollTime, now.plusNanos(backoffMs * 1_000_000))
                     .set(GenerateTask::getExpiresAt, queueDeadline)

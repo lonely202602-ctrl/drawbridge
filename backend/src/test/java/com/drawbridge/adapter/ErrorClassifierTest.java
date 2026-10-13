@@ -47,6 +47,16 @@ class ErrorClassifierTest {
     }
 
     @Test
+    void http402IsAccountScopedBalance() {
+        // HTTP 402 Payment Required（如 APIMart 统一任务协议）：平台明示余额不足，
+        // 属账号级没米信号——accountScope=true 触发同 Key 渠道批量关停
+        UpstreamCallException e = openAi(402,
+                "{\"error\":{\"message\":\"账户余额不足，请充值后再试\",\"type\":\"payment_required\"}}");
+        assertEquals(UpstreamErrorKind.BALANCE_EXHAUSTED, e.getKind());
+        assertTrue(e.isAccountScope(), "402 应标记账号级关停");
+    }
+
+    @Test
     void contentViolationIsTerminal() {
         UpstreamCallException e = openAi(400, """
                 {"error":{"message":"Your request was rejected as a result of our safety system. content_policy_violation","type":"invalid_request_error"}}

@@ -30,6 +30,9 @@ public class GroupMember {
 
     private Integer enabled;
 
+    /** 停用出处：cascade=渠道/账号停用联动（渠道启用会恢复）；admin=管理员手动停用（不自动恢复）；NULL=在用或历史数据 */
+    private String disableSource;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

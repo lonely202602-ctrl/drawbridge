@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS group_member (
     weight         INT          NOT NULL DEFAULT 1,
     sort_order     INT          NOT NULL DEFAULT 0,
     enabled        TINYINT      NOT NULL DEFAULT 1,
+    disable_source VARCHAR(16)  NULL,
     created_at     DATETIME     NOT NULL,
     updated_at     DATETIME     NOT NULL,
     KEY idx_group (group_id, enabled)
@@ -115,7 +116,7 @@ CREATE TABLE IF NOT EXISTS generate_task (
     biz_request       MEDIUMTEXT   NULL COMMENT '业务方原始请求体（完整存档，执行入参来源）',
     upstream_request  TEXT         NULL COMMENT '发上游的封装请求体（截断存档）',
     upstream_url      VARCHAR(512) NULL COMMENT '最后一次提交尝试命中的上游完整URL',
-    result            MEDIUMTEXT   NULL COMMENT '结果 JSON（b64 内联图最大约 2MB/张，不截断）',
+    result            LONGTEXT     NULL COMMENT '结果 JSON（4K b64 内联图可到 20MB+，不截断）',
     error_code        VARCHAR(40)  NULL,
     error_msg         VARCHAR(512) NULL,
     channel_id        BIGINT       NULL,

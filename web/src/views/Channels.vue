@@ -27,7 +27,7 @@
         <div style="display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap">
           <button class="btn ghost sm" @click="testRun(row)">试跑</button>
           <button class="btn ghost sm" @click="manageModels(row)">模型</button>
-          <button class="btn ghost sm" v-if="row.protocol === 'OPENAI_IMAGES_SYNC' || row.protocol === 'OPENAI_ASYNC_TASK'"
+          <button class="btn ghost sm" v-if="row.protocol !== 'CRUN_TASK' && row.protocol !== 'VOLCANO_ARK'"
                   @click="syncModels(row)">同步模型</button>
           <button class="btn ghost sm" @click="openEdit(row)">编辑</button>
           <button class="btn primary sm" v-if="row.enabled !== 1 || row.status !== 1"
@@ -94,17 +94,33 @@
           <label>API Key</label>
           <input v-model="w.apiKey" class="input" type="password" placeholder="上游密钥，加密存储" autocomplete="new-password" />
           <label>账号并发容量</label>
-          <input v-model.number="w.maxConcurrency" class="input" type="number" min="0" max="1000" style="width: 120px" />
-          <div class="hint" style="margin-top: 4px">同一 base_url + Key 的渠道共享一个并发池（该值对所有同 Key 渠道生效）；0 = 暂停派发</div>
+          <div>
+            <input v-model.number="w.maxConcurrency" class="input" type="number" min="0" max="1000" style="width: 120px" />
+            <div class="hint" style="margin-top: 4px">同一 base_url + Key 的渠道共享一个并发池（该值对所有同 Key 渠道生效）；0 = 暂停派发</div>
+          </div>
           <label>备注</label>
           <input v-model="w.remark" class="input" />
+
+          <template v-if="w.protocol === 'OPENAI_IMAGES_SYNC' || w.protocol === 'GEMINI_NATIVE'">
+            <label>上游超时（秒）</label>
+            <div>
+              <input v-model.number="w.timeoutSec" class="input" type="number" min="10" max="600" style="width: 120px" placeholder="120" />
+              <div class="hint" style="margin-top: 4px">同步生图高画质 4K 实测 3-5 分钟，apiyi 建议 300（4K 多可到 600）；留空 = 全局默认 120</div>
+            </div>
+          </template>
 
           <template v-if="(w.protocol === 'OPENAI_IMAGES_SYNC' || w.protocol === 'OPENAI_ASYNC_TASK') && w.editsSubmitPath">
             <label>接口确认</label>
             <div>
               <div class="hint" style="margin-bottom: 6px">
-                已识别到<b>图生图</b>端点：请核对两条 URL（不带参考图的<b>文生图</b>永远走模板默认，带参考图才走图生图端点；
-                参考图按 uuapi 格式 images[].image_url 发送，不支持官方 OpenAI 的 multipart 文件上传）
+                <template v-if="w.refStyle === 'openai_edits'">
+                  已识别到<b>图生图</b>端点：参考图由网关代下载后按官方 multipart 文件上传（image[]）发送；
+                  不带参考图的<b>文生图</b>永远走模板默认
+                </template>
+                <template v-else>
+                  已识别到<b>图生图</b>端点：请核对两条 URL（不带参考图的<b>文生图</b>永远走模板默认，带参考图才走图生图端点；
+                  参考图按 uuapi 格式 images[].image_url 发送，不支持官方 OpenAI 的 multipart 文件上传）
+                </template>
               </div>
               <input v-model="w.submitPath" class="input" placeholder="留空 = 模板默认" />
               <div class="hint" style="margin: 2px 0 6px">↑ 文生图</div>
@@ -136,6 +152,20 @@
               <XSelect v-model="w.respFormat" style="width: 280px" :options="respFormatOptions" />
               <span class="hint">业务方未显式指定时代为注入，显式传入优先</span>
             </div>
+            <label v-if="w.protocol === 'OPENAI_IMAGES_SYNC'" style="display: flex; gap: 6px; margin-top: 10px; align-items: center; font-size: 13px">
+              <input type="checkbox" v-model="w.omitSize" />
+              不发 size 参数（官逆 gpt-image-*-all 不接受 size 字段，画幅写进 prompt）
+            </label>
+          </template>
+          <template v-if="w.protocol === 'GEMINI_NATIVE'">
+            <div style="display: flex; gap: 8px; margin-top: 8px; align-items: center">
+              <XSelect v-model="w.refStyle" style="width: 340px" :options="nanoRefStyleOptions" />
+              <span class="hint">参考图传入方式（网关都代收公网 URL）</span>
+            </div>
+            <label style="display: flex; gap: 6px; margin-top: 10px; align-items: center; font-size: 13px">
+              <input type="checkbox" v-model="w.omitImageSize" />
+              不传 imageSize（第一代 gemini-2.5-flash-image 不支持该参数，勾选后只按比例出图）
+            </label>
           </template>
           <template v-if="w.protocol === 'OPENAI_ASYNC_TASK'">
             <div style="display: flex; gap: 8px; margin-top: 8px">
@@ -146,6 +176,10 @@
               <input v-model="w.idField" class="input" placeholder="任务号字段 id" />
               <input v-model="w.statusField" class="input" placeholder="状态字段 status" />
               <input v-model="w.urlField" class="input" placeholder="结果字段 data[*].url" />
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 8px; align-items: center">
+              <XSelect v-model="w.requestStyle" style="width: 340px" :options="requestStyleOptions" />
+              <span class="hint">APIMart 等平台：size 直传比例串（16:9），分辨率档位走独立 resolution 字段</span>
             </div>
           </template>
         </div>
@@ -230,8 +264,9 @@ const importText = ref('')
 const importing = ref(false)
 
 const protocols = [
-  { value: 'OPENAI_IMAGES_SYNC', label: 'OpenAI 同步生图', desc: '适合 apiyi / laozhang / uuapi 的图片模型，一次请求直接返回图片', placeholder: 'https://api.apiyi.com/v1', baseUrlHint: '一般以 /v1 结尾，可从文档 curl 自动识别', defaultPath: '/images/generations', defaultQueryPath: '' },
-  { value: 'OPENAI_ASYNC_TASK', label: 'OpenAI 异步任务', desc: '适合 nezhagate / uuapi 异步通道：提交拿任务号，网关自动轮询', placeholder: 'https://nezhagate.com/v1', baseUrlHint: '以 /v1 结尾；响应字段风格下一步可选', defaultPath: '/images/generations', defaultQueryPath: 'nezha=/images/jobs/{id} · uu=/images/tasks/{id}' },
+  { value: 'OPENAI_IMAGES_SYNC', label: 'OpenAI 同步生图', desc: '适合 apiyi / laozhang / uuapi 的图片模型，一次请求直接返回图片', placeholder: 'https://api.apiyi.com', baseUrlHint: 'apiyi 建议填裸域名（与 nano 渠道共享并发池），其余一般以 /v1 结尾', defaultPath: '/images/generations', defaultQueryPath: '' },
+  { value: 'OPENAI_ASYNC_TASK', label: 'OpenAI 异步任务', desc: '适合 nezhagate / uuapi / APIMart（apib.ai）异步通道：提交拿任务号，网关自动轮询', placeholder: 'https://nezhagate.com/v1', baseUrlHint: '以 /v1 结尾；响应字段风格下一步可选', defaultPath: '/images/generations', defaultQueryPath: 'nezha=/images/jobs/{id} · uu=/images/tasks/{id}' },
+  { value: 'GEMINI_NATIVE', label: 'Gemini 原生生图', desc: '适合 apiyi nano 系（gemini-3-pro-image / nano-banana-2.1 等）：谷歌 generateContent 格式，同步返回', placeholder: 'https://api.apiyi.com', baseUrlHint: '填裸域名即可，版本前缀 /v1beta 在接口路径里', defaultPath: '/v1beta/models/{model}:generateContent', defaultQueryPath: '' },
   { value: 'CRUN_TASK', label: 'Crun 私有任务', desc: '适合 crun.ai：CreateTask/TaskInfo 私有协议', placeholder: 'https://api.crunai.com/api/v1', baseUrlHint: '必须以 /api/v1 结尾', defaultPath: '/client/job/CreateTask', defaultQueryPath: '/client/job/TaskInfo?task_id={id}' },
   { value: 'VOLCANO_ARK', label: '火山方舟 Seedance', desc: '视频协议，生图阶段暂未接入', placeholder: '', baseUrlHint: '', defaultPath: '', disabled: true }
 ]
@@ -240,14 +275,15 @@ const currentProto = computed(() => protocols.find(p => p.value === w.protocol) 
 const w = reactive({
   id: null, protocol: '', curlText: '', queryCurlText: '', name: '', baseUrl: '', apiKey: '',
   maxConcurrency: 5, remark: '', submitPath: '', editsSubmitPath: '', flavor: 'nezha', refStyle: '', respFormat: '',
-  queryPath: '', idField: '', statusField: '', urlField: '', editing: false
+  queryPath: '', idField: '', statusField: '', urlField: '', requestStyle: '', editing: false,
+  timeoutSec: null, omitSize: false, omitImageSize: false
 })
 // 编辑时的配置底稿：保存按底稿合并回写，向导不认识的键（如 statusMap）不会被抹掉
 let extraBase = {}
 let pathBase = {}
 
-const protoLabel = v => ({ OPENAI_IMAGES_SYNC: 'OpenAI 同步', OPENAI_ASYNC_TASK: 'OpenAI 异步', CRUN_TASK: 'Crun', VOLCANO_ARK: '火山方舟' }[v] || v)
-const protoBadge = v => ({ OPENAI_IMAGES_SYNC: 'green', OPENAI_ASYNC_TASK: 'orange', CRUN_TASK: 'green', VOLCANO_ARK: 'gray' }[v] || 'gray')
+const protoLabel = v => ({ OPENAI_IMAGES_SYNC: 'OpenAI 同步', OPENAI_ASYNC_TASK: 'OpenAI 异步', GEMINI_NATIVE: 'Gemini 原生', CRUN_TASK: 'Crun', VOLCANO_ARK: '火山方舟' }[v] || v)
+const protoBadge = v => ({ OPENAI_IMAGES_SYNC: 'green', OPENAI_ASYNC_TASK: 'orange', GEMINI_NATIVE: 'green', CRUN_TASK: 'green', VOLCANO_ARK: 'gray' }[v] || 'gray')
 
 const flavorOptions = [
   { label: '哪吒风格', value: 'nezha' },
@@ -255,7 +291,17 @@ const flavorOptions = [
 ]
 const refStyleOptions = [
   { label: '图生图参考图：默认（image 直传）', value: '' },
-  { label: '图生图参考图：uuapi（自动切 edits 端点）', value: 'uuapi' }
+  { label: '图生图参考图：官方 multipart 文件上传（apiyi/官方 gpt-image）', value: 'openai_edits' },
+  { label: '图生图参考图：uuapi（自动切 edits 端点）', value: 'uuapi' },
+  { label: '图生图参考图：APIMart（image_urls 数组）', value: 'image_urls' }
+]
+const nanoRefStyleOptions = [
+  { label: '参考图：网关代下载转 base64（推荐，稳）', value: '' },
+  { label: '参考图：URL 直传（fileUri，非全球图床可能不被参考）', value: 'gemini_file_uri' }
+]
+const requestStyleOptions = [
+  { label: '请求风格：标准（比例换算像素 size）', value: '' },
+  { label: '请求风格：APIMart（size=比例串 + 独立 resolution 档位）', value: 'ratioTier' }
 ]
 const respFormatOptions = [
   { label: '响应格式：跟随上游（不干预）', value: '' },
@@ -264,12 +310,15 @@ const respFormatOptions = [
 ]
 
 function statusText(row) {
+  // 账号/余额自动停用也落 enabled=0（幂等去重），展示按 status 优先判，别把"余额停用"显示成"手动停用"
+  if (row.status === 4) return '余额停用'
   if (row.enabled !== 1) return '手动停用'
-  return { 1: '正常', 2: '熔断中', 3: '半开探测', 4: '余额停用' }[row.status] || '未知'
+  return { 1: '正常', 2: '熔断中', 3: '半开探测' }[row.status] || '未知'
 }
 function statusBadge(row) {
+  if (row.status === 4) return 'red'
   if (row.enabled !== 1) return 'gray'
-  return { 1: 'green', 2: 'red', 3: 'orange', 4: 'red' }[row.status] || 'gray'
+  return { 1: 'green', 2: 'red', 3: 'orange' }[row.status] || 'gray'
 }
 
 // ---------------- curl 解析 ----------------
@@ -299,6 +348,13 @@ function parseCurl(text) {
 function pickProtocol(p) {
   if (p.disabled) return
   w.protocol = p.value
+  // 协议专属状态不跨卡片携带（openai_edits/omitSize 是 OpenAI 系专属，nano 不认识；反之亦然）
+  w.refStyle = ''
+  w.respFormat = ''
+  w.omitSize = false
+  w.omitImageSize = false
+  w.submitPath = ''
+  w.editsSubmitPath = ''
   applyFlavorDefaults()
   const parsed = parseCurl(w.curlText)
   if (parsed) w.baseUrl = parsed.base
@@ -333,6 +389,10 @@ function applyCurlAndNext() {
           curlNotices.value.push('图生图路径含 /async，已自动切换为 UU 风格（查询字段已按 UU 预填）')
         }
         curlNotices.value.push(`检测到图生图端点 ${cp}：已存入「图生图端点」。注意：按 uuapi 格式（images[].image_url）发送，不支持官方 OpenAI 的 multipart 文件上传；文生图仍走模板默认（${dp}），请在下方接口确认里核对`)
+      } else if (w.protocol === 'GEMINI_NATIVE' && /^\/v1beta\/models\/[^/:]+:generateContent$/.test(cp)) {
+        // 文档示例带真实模型名 → 模板化 {model}，模型名随成员映射自动替换
+        w.submitPath = currentProto.value.defaultPath
+        curlNotices.value.push(`提交路径已模板化：${cp} → /v1beta/models/{model}:generateContent（模型名随成员映射自动替换）`)
       } else {
         w.submitPath = cp
         curlNotices.value.push(`提交路径与模板默认（${dp}）不同，已按 curl 采用：${cp}（注意：路径覆盖对该渠道所有请求生效）`)
@@ -362,6 +422,51 @@ function applyCurlAndNext() {
     if (!sameAsDefault && templated !== w.queryPath) {
       w.queryPath = templated
     }
+  }
+  // APIMart（apib.ai 同后端）统一任务协议：认出域名或 /tasks/{id} 查询路径，
+  // 一键预填全套声明式配置（提交壳 {code,data[0].task_id}、轮询 /tasks/{id}、url 数组取图）
+  if (w.protocol === 'OPENAI_ASYNC_TASK'
+      && (parsed && /apimart\.ai|apib\.ai/i.test(parsed.base || '')
+          || (q?.path && normPath(templateizeQuery(q.path)) === '/tasks/{id}'))) {
+    w.queryPath = '/tasks/{id}'
+    w.idField = 'data[0].task_id'
+    w.statusField = 'data.status'
+    w.urlField = 'data.result.images[*].url[*]'
+    if (!w.refStyle) w.refStyle = 'image_urls'
+    if (!w.requestStyle) w.requestStyle = 'ratioTier'
+    curlNotices.value.push('识别为 APIMart（apib.ai）统一任务协议：查询路径/任务号字段/结果字段/参考图与请求风格已按 APIMart 预填，可在高级选项调整')
+  }
+  // apiyi（API易）预设：识别域名后按两家协议各自套全套配置。
+  // 统一裸域名（/v1、/v1beta 进路径）→ image 与 nano 渠道共享同一并发池（账号按 base_url+Key 归一）
+  const isApiyi = parsed && /apiyi\.com/i.test(parsed.base || '')
+  if (isApiyi && w.protocol === 'OPENAI_IMAGES_SYNC') {
+    if (/\/v1\/?$/i.test(w.baseUrl)) {
+      w.baseUrl = w.baseUrl.replace(/\/v1\/?$/i, '')
+      curlNotices.value.push('Base URL 已去掉 /v1（改为提交路径携带）：与 nano 渠道共用裸域名，同一把 Key 自动共享并发池')
+    }
+    if (!w.submitPath) {
+      w.submitPath = '/v1/images/generations'
+      curlNotices.value.push('提交路径已按 apiyi 预填 /v1/images/generations')
+    }
+    if (!w.editsSubmitPath) {
+      w.editsSubmitPath = '/v1/images/edits'
+    }
+    if (!w.refStyle) {
+      w.refStyle = 'openai_edits'
+      curlNotices.value.push('已启用「官方 multipart 文件上传」：参考图由网关代下载后按 image[] 发送（apiyi gpt-image 系契约），可在高级选项关闭')
+    }
+    if (!w.timeoutSec) {
+      w.timeoutSec = 300
+      curlNotices.value.push('上游超时已预填 300 秒（apiyi 同步生图高画质实测 3-5 分钟，全局 120 秒会误杀）')
+    }
+    if (/gpt-image-[0-9.]+-all/i.test(w.curlText) && !w.omitSize) {
+      w.omitSize = true
+      curlNotices.value.push('识别到官逆 -all 模型：已勾选「不发 size」（-all 不接受 size 字段，画幅写进 prompt）')
+    }
+  }
+  if (isApiyi && w.protocol === 'GEMINI_NATIVE' && !w.timeoutSec) {
+    w.timeoutSec = 300
+    curlNotices.value.push('上游超时已预填 300 秒（nano 系 4K 出图较慢，官方建议 4K 配 600 秒）')
   }
   step.value = 1
 }
@@ -395,7 +500,8 @@ function openWizard() {
   Object.assign(w, {
     id: null, protocol: '', curlText: '', queryCurlText: '', name: '', baseUrl: '', apiKey: '',
     maxConcurrency: 5, remark: '', submitPath: '', editsSubmitPath: '', flavor: 'nezha', refStyle: '', respFormat: '',
-    queryPath: '', idField: '', statusField: '', urlField: '', editing: false
+    queryPath: '', idField: '', statusField: '', urlField: '', requestStyle: '', editing: false,
+    timeoutSec: null, omitSize: false, omitImageSize: false
   })
   probeResult.value = null
   curlNotices.value = []
@@ -409,13 +515,17 @@ function openEdit(row) {
   extraBase = row.extraConfig ? JSON.parse(row.extraConfig) : {}
   Object.assign(w, {
     id: row.id, protocol: row.protocol, curlText: '', name: row.name, baseUrl: row.baseUrl, apiKey: '',
-    maxConcurrency: row.maxConcurrency || 5, remark: row.remark || '', editing: true,
+    // 回显账号真实容量（?? 让 0=暂停 原样通过；渠道列 maxConcurrency 只是初始默认，回显它会误写共享账号）
+    maxConcurrency: row.accountCapacity ?? row.maxConcurrency ?? 5, remark: row.remark || '', editing: true,
     submitPath: pathBase.submitPath || '', editsSubmitPath: pathBase.editsSubmitPath || '',
     queryPath: pathBase.queryPath || extraBase.queryPath || '',
     flavor: extraBase.flavor || 'nezha',
     refStyle: extraBase.refImageStyle || '', respFormat: extraBase.defaultResponseFormat || '',
     idField: extraBase.idField || '',
-    statusField: extraBase.statusField || '', urlField: extraBase.urlField || ''
+    statusField: extraBase.statusField || '', urlField: extraBase.urlField || '',
+    requestStyle: extraBase.requestStyle || '',
+    timeoutSec: extraBase.timeoutMs ? Math.round(extraBase.timeoutMs / 1000) : null,
+    omitSize: !!extraBase.omitSize, omitImageSize: !!extraBase.omitImageSize
   })
   probeResult.value = null
   advOpen.value = true
@@ -439,8 +549,9 @@ function buildPayload() {
     setKey(extra, 'idField', w.idField)
     setKey(extra, 'statusField', w.statusField)
     setKey(extra, 'urlField', w.urlField)
+    setKey(extra, 'requestStyle', w.requestStyle)
   } else {
-    ;['flavor', 'queryPath', 'idField', 'statusField', 'urlField'].forEach(k => delete extra[k])
+    ;['flavor', 'queryPath', 'idField', 'statusField', 'urlField', 'requestStyle'].forEach(k => delete extra[k])
   }
   // 图生图参考图风格：两个 OpenAI 协议族通用（带参考图自动切 edits 系端点）
   setKey(extra, 'refImageStyle', w.refStyle)
@@ -448,6 +559,18 @@ function buildPayload() {
     setKey(extra, 'defaultResponseFormat', w.respFormat)
   } else {
     delete extra.defaultResponseFormat
+  }
+  // 渠道级提交超时（秒 → 毫秒存）与模型怪癖开关
+  setKey(extra, 'timeoutMs', w.timeoutSec && w.timeoutSec > 0 ? w.timeoutSec * 1000 : null)
+  if (w.protocol === 'OPENAI_IMAGES_SYNC') {
+    if (w.omitSize) extra.omitSize = true; else delete extra.omitSize
+  } else {
+    delete extra.omitSize
+  }
+  if (w.protocol === 'GEMINI_NATIVE') {
+    if (w.omitImageSize) extra.omitImageSize = true; else delete extra.omitImageSize
+  } else {
+    delete extra.omitImageSize
   }
   return {
     name: w.name,
@@ -503,7 +626,8 @@ async function testRun(row) {
 
 async function syncModels(row) {
   const data = await unwrap(api.post(`/admin/channels/${row.id}/sync-models`))
-  toast(`同步完成，共 ${data.count} 个模型`)
+  toast(`同步完成，共 ${data.count} 个模型` +
+    (data.filtered ? `（按协议族过滤 ${data.filtered} 个非本族模型，可用 extra_config.modelFilter 自定义）` : ''))
 }
 
 async function enable(row) {

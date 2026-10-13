@@ -109,8 +109,10 @@ public class ChannelAdminController {
         channel.setApiKeyEnc(cipher.encrypt(body.apiKey()));
         // 上游账号键：保存时计算（明文在手）；容量取管理端填的并发数（未填走默认）
         channel.setAccountKey(accountRegistry.computeKey(channel.getBaseUrl(), body.apiKey()));
+        // 容量只用于初始化"新"账号：同 Key 再挂渠道不得把已有池子悄悄改回表单默认值
+        boolean existed = accountRegistry.accountExists(channel.getAccountKey());
         accountRegistry.ensureAccount(channel.getAccountKey());
-        if (body.maxConcurrency() != null) {
+        if (!existed && body.maxConcurrency() != null) {
             accountRegistry.setCapacity(channel.getAccountKey(), body.maxConcurrency());
         }
         LocalDateTime now = LocalDateTime.now();
@@ -133,20 +135,23 @@ public class ChannelAdminController {
         }
         String oldAccountKey = channel.getAccountKey();
         apply(channel, body);
+        // 新 Key 必须落密文（v0.4 重写时曾丢失这行，导致"换 Key 保存成功但上游仍用旧 Key"的事故）；
         // 账号键重算：新 Key 用明文；未重传 Key 但改了 base_url 也可能换账号（用存量密文解密计算）
-        String keySource = body.apiKey() != null && !body.apiKey().isBlank()
-                ? body.apiKey() : cipher.decrypt(channel.getApiKeyEnc());
+        String keySource;
+        if (body.apiKey() != null && !body.apiKey().isBlank()) {
+            channel.setApiKeyEnc(cipher.encrypt(body.apiKey()));
+            keySource = body.apiKey();
+        } else {
+            keySource = cipher.decrypt(channel.getApiKeyEnc());
+        }
         channel.setAccountKey(accountRegistry.computeKey(channel.getBaseUrl(), keySource));
+        // 存在性必须在 ensureAccount 之前查——ensure 会把新账号行建出来，之后再查永远为真
+        boolean targetExisted = accountRegistry.accountExists(channel.getAccountKey());
         accountRegistry.ensureAccount(channel.getAccountKey());
         boolean accountChanged = oldAccountKey != null && !oldAccountKey.equals(channel.getAccountKey());
-        if (accountChanged) {
-            // 换 Key/换地址 = 换账号：把管理员配过的容量带过去，避免悄悄回默认值
-            int carried = accountRegistry.capacityOf(oldAccountKey);
-            if (carried > 0 && accountRegistry.capacityOf(channel.getAccountKey()) == 0) {
-                accountRegistry.setCapacity(channel.getAccountKey(), carried);
-            }
-        }
-        if (body.maxConcurrency() != null) {
+        // 容量写入口径：账号没变=管理员正经调自己池子（前端回显账号真实值）→ 写；
+        // 换到"新"账号 → 表单值带走初始化；换到"已有"账号 → 不写（表单回显的是旧账号容量，覆盖别人的池子是事故）
+        if (body.maxConcurrency() != null && (!accountChanged || !targetExisted)) {
             accountRegistry.setCapacity(channel.getAccountKey(), body.maxConcurrency());
         }
         channel.setUpdatedAt(LocalDateTime.now());
@@ -228,19 +233,36 @@ public class ChannelAdminController {
         if (family == ProtocolFamily.CRUN_TASK || family == ProtocolFamily.VOLCANO_ARK) {
             throw new BizException(ErrorCode.PARAM_INVALID, "该协议族没有模型查询接口，请在模型管理里人工录入");
         }
-        UpstreamHttp.HttpResult result = http.getJson(
-                com.drawbridge.adapter.Pointer.joinUrl(channel.getBaseUrl(), "/models"),
-                Map.of("Authorization", "Bearer " + configService.runtimeOf(channel).apiKey()), 15_000);
+        UpstreamHttp.HttpResult result = getModelsResult(channel.getBaseUrl(), modelListPaths(family),
+                "Bearer " + configService.runtimeOf(channel).apiKey());
         JsonNode node = UpstreamHttp.parseBody(result.status(), result.body());
         if (result.status() != 200) {
             throw ErrorClassifierBridge.fromOpenAi(result.status(), node);
         }
-        JsonNode data = node.has("data") && node.get("data").isArray() ? node.get("data") : node;
+        // Gemini 原生列表形状 {"models":[{name:"models/gemini-..."}]}；OpenAI 形状 data[].id 两者兼容
+        JsonNode data;
+        if (family == ProtocolFamily.GEMINI_NATIVE && node.has("models") && node.get("models").isArray()) {
+            data = node.get("models");
+        } else {
+            data = node.has("data") && node.get("data").isArray() ? node.get("data") : node;
+        }
+        // 聚合网关（apiyi 等）的 /models 是全家桶（聊天/生图/视频混在一起），
+        // 只导入本协议族实际能跑的模型，防不同族的模型混进备选池（nano 系在 apiyi 不支持 images 端点）。
+        java.util.regex.Pattern filter = syncModelFilter(channel, family);
         int count = 0;
+        int filtered = 0;
         LocalDateTime now = LocalDateTime.now();
         for (JsonNode item : data) {
             String modelId = item.path("id").asText(null);
             if (modelId == null || modelId.isBlank()) {
+                String name = item.path("name").asText(null);
+                modelId = name == null ? null : name.replaceFirst("^models/", "");
+            }
+            if (modelId == null || modelId.isBlank()) {
+                continue;
+            }
+            if (!filter.matcher(modelId).find()) {
+                filtered++;
                 continue;
             }
             UpstreamModel existing = upstreamModelMapper.selectOne(Wrappers.<UpstreamModel>lambdaQuery()
@@ -262,7 +284,29 @@ public class ChannelAdminController {
             }
             count++;
         }
-        return ApiResponse.ok(Map.of("count", count));
+        return ApiResponse.ok(Map.of("count", count, "filtered", filtered));
+    }
+
+    /** OpenAI 族（同步/异步）默认收生图模型；Gemini 原生族只收 nano 系（apiyi 上 nano 不支持 images 端点，跑不了）。 */
+    private static final java.util.regex.Pattern OPENAI_IMAGE_MODEL_FILTER = java.util.regex.Pattern.compile(
+            "gpt-image|chatgpt-image|dall-e|flux|seedream|seededit|mai-image|z-image|qwen-image"
+                    + "|grok-2-image|kontext|hunyuan-image|jimeng|irag",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static final java.util.regex.Pattern GEMINI_IMAGE_MODEL_FILTER = java.util.regex.Pattern.compile(
+            "gemini-.*(image|nano-banana)|nano-banana", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /** 同步模型过滤正则：extra_config.modelFilter 优先（管理员自定义），非法正则回退族默认。 */
+    private java.util.regex.Pattern syncModelFilter(Channel channel, ProtocolFamily family) {
+        java.util.regex.Pattern fallback = family == ProtocolFamily.GEMINI_NATIVE
+                ? GEMINI_IMAGE_MODEL_FILTER : OPENAI_IMAGE_MODEL_FILTER;
+        if (!(configService.runtimeOf(channel).extra().get("modelFilter") instanceof String s) || s.isBlank()) {
+            return fallback;
+        }
+        try {
+            return java.util.regex.Pattern.compile(s, java.util.regex.Pattern.CASE_INSENSITIVE);
+        } catch (IllegalArgumentException e) {
+            return fallback;
+        }
     }
 
     @GetMapping("/{id}/models")
@@ -412,27 +456,60 @@ public class ChannelAdminController {
         }
     }
 
+    /** 模型列表端点候选：裸域名渠道（apiyi 推荐配法）依次回退到 /v1 前缀。 */
+    private static List<String> modelListPaths(ProtocolFamily family) {
+        return switch (family) {
+            case OPENAI_IMAGES_SYNC, OPENAI_ASYNC_TASK -> List.of("/models", "/v1/models");
+            case GEMINI_NATIVE -> List.of("/v1beta/models", "/v1/models");
+            default -> List.of("/models");
+        };
+    }
+
+    /**
+     * 模型列表探测：依次尝试候选路径，返回首个「HTTP 200 且响应体是 JSON」的结果；
+     * 全不中返回最后一个响应（让上层把真实错误报出来）。
+     * 判据不能只用状态码——聚合站裸域名打 /models 常见 SPA fallback：HTTP 200 + HTML 官网页（apiyi 实测），
+     * 误当成功会"连通正常"假阳性 / 同步模型直接炸非 JSON。
+     */
+    private UpstreamHttp.HttpResult getModelsResult(String baseUrl, List<String> paths, String authValue) {
+        UpstreamHttp.HttpResult last = null;
+        for (String p : paths) {
+            UpstreamHttp.HttpResult r = http.getJson(
+                    com.drawbridge.adapter.Pointer.joinUrl(baseUrl, p),
+                    Map.of("Authorization", authValue), 15_000);
+            if (r.status() == 200 && r.body() != null && r.body().stripLeading().startsWith("{")) {
+                return r;
+            }
+            last = r;
+        }
+        return last;
+    }
+
     /** 按协议探测：连通 + Key 有效性。 */
     private String probe(Channel channel) {
         ProtocolFamily family = ProtocolFamily.valueOf(channel.getProtocol());
         try {
             String key = configService.runtimeOf(channel).apiKey();
-            UpstreamHttp.HttpResult result = switch (family) {
-                case OPENAI_IMAGES_SYNC, OPENAI_ASYNC_TASK -> http.getJson(
-                        com.drawbridge.adapter.Pointer.joinUrl(channel.getBaseUrl(), "/models"),
-                        Map.of("Authorization", "Bearer " + key), 15_000);
-                case CRUN_TASK -> http.getJson(
+            UpstreamHttp.HttpResult result;
+            if (family == ProtocolFamily.CRUN_TASK) {
+                result = http.getJson(
                         com.drawbridge.adapter.Pointer.joinUrl(channel.getBaseUrl(),
                                 "/client/job/TaskInfo?task_id=__drawbridge_probe__"),
                         Map.of("x-api-key", key), 15_000);
-                case VOLCANO_ARK -> throw new BizException(ErrorCode.PARAM_INVALID,
-                        "火山方舟为视频协议，生图阶段未接入");
-            };
+            } else if (family == ProtocolFamily.VOLCANO_ARK) {
+                throw new BizException(ErrorCode.PARAM_INVALID, "火山方舟为视频协议，生图阶段未接入");
+            } else {
+                result = getModelsResult(channel.getBaseUrl(), modelListPaths(family), "Bearer " + key);
+            }
             if (result.status() == 200) {
                 return "连通正常，Key 有效";
             }
             if (result.status() == 401 || result.status() == 403) {
                 return "可达，但 Key 无效或无权限（HTTP " + result.status() + "）";
+            }
+            if (family == ProtocolFamily.GEMINI_NATIVE && result.status() == 404) {
+                // 个别网关不实现 Gemini 原生模型列表（生成本身可用）：连通性以真实任务试跑为准
+                return "可达，但 /v1beta/models 列表端点不存在（HTTP 404），连通性请以真实任务试跑为准";
             }
             if (family == ProtocolFamily.CRUN_TASK && result.status() >= 400 && result.status() < 500) {
                 // Crun 先鉴权后验参数（实测：无 Key/假 Key 都是 401），探活任务号不存在回 4xx 属预期

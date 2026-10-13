@@ -81,6 +81,11 @@ public final class ErrorClassifier {
         if (status == 401) {
             return new UpstreamCallException(UpstreamErrorKind.AUTH_FAILED, message, status);
         }
+        if (status == 402) {
+            // HTTP 402 Payment Required：平台明示余额不足（如 APIMart 统一任务协议）——
+            // 账号级没米信号，触发同 Key 渠道批量关停
+            return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, status, true);
+        }
         if (status == 403) {
             if (BALANCE_EXPLICIT.matcher(message).find()) {
                 return new UpstreamCallException(UpstreamErrorKind.BALANCE_EXHAUSTED, message, status, true);

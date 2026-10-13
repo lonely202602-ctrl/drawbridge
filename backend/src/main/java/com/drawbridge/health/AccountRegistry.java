@@ -116,6 +116,12 @@ public class AccountRegistry {
         }
     }
 
+    /** 账号行是否已存在（容量写入口径用：已有池子不得被新建/换绑渠道悄悄改写）。 */
+    public boolean accountExists(String accountKey) {
+        return accountKey != null && !accountKey.isBlank()
+                && accountMapper.selectById(accountKey) != null;
+    }
+
     /** 容量读取；缺行按 0 处理（暂停派发，监控页可见，由 ensureAccount/保存渠道补齐）。 */
     public int capacityOf(String accountKey) {
         if (accountKey == null || accountKey.isBlank()) {

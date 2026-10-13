@@ -115,7 +115,8 @@ public class SubmitChain {
                     ImageProvider.SubmitCommand cmd = new ImageProvider.SubmitCommand(
                             member.getUpstreamModel(), payload.prompt(), n,
                             payload.resolution(), payload.aspectRatio(), payload.legacySize(),
-                            payload.images(), payload.options(), submitTimeout);
+                            payload.images(), payload.options(),
+                            effectiveSubmitTimeout(submitTimeout, rt.extra()));
                     submitUrl = provider.submitUrl(cmd, rt);
                     String requestJson = com.drawbridge.common.JsonUtil.truncateBytes(
                             provider.buildRequestJson(cmd, rt),
@@ -231,6 +232,12 @@ public class SubmitChain {
         if (st.state() == RouteEngine.Availability.STRUCTURAL_DOWN) {
             return null;
         }
+        if (st.state() == RouteEngine.Availability.TEMPORARY_DOWN) {
+            // 剩余候选暂时不可用（429 冷却/熔断）：留队列等恢复，与派发器"暂时性留队列"语义一致。
+            // 曾在此直接收尾 UPSTREAM_ALL_FAILED——单渠道分组一次 429 就把任务打死，冷却形同虚设
+            requeueRunning(task);
+            return new NextHop(null, true);
+        }
         Set<Long> tried = attemptMapper.selectList(Wrappers.<TaskAttempt>lambdaQuery()
                         .select(TaskAttempt::getChannelId)
                         .eq(TaskAttempt::getTaskId, task.getId()))
@@ -254,7 +261,13 @@ public class SubmitChain {
             }
         }
         if (!sawUntried) {
-            return null; // 候选全部试过 → 收尾失败（UPSTREAM_ALL_FAILED），不是排队
+            // 候选列表全试过 ≠ 全死：结构可用、只是暂时不可用（429 冷却/熔断中）且未试过的成员要等——
+            // 否则"A 刚 5xx、B 正冷却"的组合会被误判 UPSTREAM_ALL_FAILED（candidateState 只把健康的 B 过滤掉了）
+            if (hasUntriedTemporarilyDown(task.getGroupCode(), tried)) {
+                requeueRunning(task);
+                return new NextHop(null, true);
+            }
+            return null; // 真的全部试过且全部死透 → 收尾失败（UPSTREAM_ALL_FAILED），不是排队
         }
         // 有未试候选但全满：退回队列保留进度，等饱和账号出空位（排队语义，不失败）
         requeueRunning(task);
@@ -277,6 +290,9 @@ public class SubmitChain {
                     .isNull(GenerateTask::getUpstreamTaskId)
                     .set(GenerateTask::getStatus, TaskStatus.SUBMITTED.name())
                     .set(GenerateTask::getChannelId, null)
+                    // 清掉上次尝试的存档：upstream_request 非空会被清扫②当作"已到发送点"而放弃重跑；
+                    // 退队任务下一次尝试尚未发生，重新领取后若再崩溃应保持可清扫（每次尝试的存档见 task_attempt）
+                    .set(GenerateTask::getUpstreamRequest, null)
                     .set(GenerateTask::getNextPollTime, now.plusNanos(REQUEUE_BACKOFF_MS * 1_000_000))
                     .set(GenerateTask::getExpiresAt, queueDeadline)
                     .set(GenerateTask::getUpdatedAt, now));
@@ -285,6 +301,32 @@ public class SubmitChain {
         } catch (Exception e) {
             log.error("退队失败（保持 RUNNING 由兜底清扫处理）: taskId={}", task.getId(), e);
         }
+    }
+
+    /** 分组里是否存在"未试过、结构可用、只是暂时不可用（429 冷却/熔断中）"的渠道。 */
+    private boolean hasUntriedTemporarilyDown(String groupCode, Set<Long> tried) {
+        ModelGroup group = configService.groupByCode(groupCode);
+        if (group == null) {
+            return false;
+        }
+        for (GroupMember m : configService.current().membersByGroupId()
+                .getOrDefault(group.getId(), List.of())) {
+            if (m.getEnabled() == null || m.getEnabled() != 1 || tried.contains(m.getChannelId())) {
+                continue;
+            }
+            Channel c = configService.channel(m.getChannelId());
+            if (c == null || c.getEnabled() == null || c.getEnabled() != 1) {
+                continue;
+            }
+            if (c.getStatus() != null && c.getStatus() != ChannelHealthTracker.NORMAL
+                    && c.getStatus() != ChannelHealthTracker.HALF_OPEN) {
+                continue;
+            }
+            if (cooldown.isCooling(c.getId()) || !health.isAvailable(c.getId())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private GroupMember findEnabledMember(String groupCode, Long channelId) {
@@ -435,5 +477,30 @@ public class SubmitChain {
 
     private int costMs(long t0) {
         return (int) Math.min(Integer.MAX_VALUE, System.currentTimeMillis() - t0);
+    }
+
+    /**
+     * 渠道级提交超时覆盖：extra_config.timeoutMs（毫秒）优先于全局 submit.timeout_ms。
+     * apiyi 等同步生图上游高画质 4K 实测 3-5 分钟，全局 120s 会误杀还照常计费；
+     * 钳制 1s–10min 防呆（同步上游断连上游照跑，超时拉太长只是白占并发位）。
+     */
+    static int effectiveSubmitTimeout(int globalMs, java.util.Map<String, Object> extra) {
+        if (extra != null) {
+            Object v = extra.get("timeoutMs");
+            long ms = -1;
+            if (v instanceof Number n) {
+                ms = n.longValue();
+            } else if (v instanceof String s) {
+                try {
+                    ms = Long.parseLong(s.trim());
+                } catch (NumberFormatException ignored) {
+                    // 非法配置回退全局
+                }
+            }
+            if (ms > 0) {
+                return (int) Math.max(1000, Math.min(ms, 600_000L));
+            }
+        }
+        return globalMs;
     }
 }

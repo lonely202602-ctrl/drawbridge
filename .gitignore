@@ -12,3 +12,6 @@ web/dist/
 *.log
 application-local.yml
 .DS_Store
+
+# local test scratch
+.chain-test/

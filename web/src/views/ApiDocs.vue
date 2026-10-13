@@ -60,34 +60,34 @@
         <thead>
           <tr>
             <th style="width: 150px">你传</th>
-            <th>背后是 OpenAI 系上游（网关按方向归档成它认的宽×高）</th>
+            <th>背后是 OpenAI 系上游（按官方 30 档对照表精确定档宽×高）</th>
             <th>背后是 Crun 系上游（网关原样直译，模型校验）</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td class="mono">16:9 + 2k</td>
-            <td>size = <b>1536×1024</b>（横版；该族 2k 自动就近降级）</td>
+            <td>size = <b>2048×1152</b></td>
             <td>aspect_ratio=<b>16:9</b>、resolution=<b>2k</b></td>
           </tr>
           <tr>
+            <td class="mono">21:9 + 2k</td>
+            <td>size = <b>2048×864</b>（与 16:9 严格不同档）</td>
+            <td>aspect_ratio=<b>21:9</b>、resolution=<b>2k</b></td>
+          </tr>
+          <tr>
             <td class="mono">9:16 + 4k</td>
-            <td>size = <b>1024×1536</b>（竖版）</td>
+            <td>size = <b>2160×3840</b></td>
             <td>aspect_ratio=<b>9:16</b>、resolution=<b>4k</b></td>
           </tr>
           <tr>
             <td class="mono">3:4 + 2k</td>
-            <td>size = <b>1024×1536</b>（竖版方向归档）</td>
+            <td>size = <b>1536×2048</b></td>
             <td>aspect_ratio=<b>3:4</b>、resolution=<b>2k</b></td>
           </tr>
           <tr>
-            <td class="mono">21:9 + 1k</td>
-            <td>size = <b>1536×1024</b>（超宽按横版归档）</td>
-            <td>aspect_ratio=<b>21:9</b>、resolution=<b>1k</b>（模型不支持时上游明确报错）</td>
-          </tr>
-          <tr>
             <td class="mono">1:1 + 1k</td>
-            <td>size = <b>1024×1024</b></td>
+            <td>size = <b>1280×1280</b>（只传比例不传档位按 1k 计）</td>
             <td>aspect_ratio=<b>1:1</b>、resolution=<b>1k</b></td>
           </tr>
           <tr>
@@ -99,7 +99,32 @@
       </table>
       <div class="hint" style="margin-top: 10px; line-height: 1.9">
         特殊模型的精确尺寸（如某些模型只认 1792×1024）由管理员按渠道配置映射，业务方无感；旧版 <code>size</code>
-        宽×高写法仍兼容（网关自动换算），<b>新接入请统一用上面两个参数</b>。
+        宽×高写法仍兼容（原样透传），<b>新接入请统一用上面两个参数</b>。
+      </div>
+
+      <h4 style="margin: 16px 0 6px">附：OpenAI 系上游「比例 × 档位」完整 30 档对照表（网关自动查表）</h4>
+      <table class="xtable">
+        <thead>
+          <tr>
+            <th style="width: 90px">比例</th>
+            <th>1k</th>
+            <th>2k</th>
+            <th>4k</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="r in size30" :key="r.ratio">
+            <td class="mono">{{ r.ratio }}</td>
+            <td class="mono">{{ r.k1 }}</td>
+            <td class="mono">{{ r.k2 }}</td>
+            <td class="mono">{{ r.k4 }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="hint" style="margin-top: 8px; line-height: 1.9">
+        · 上表是行业通用 10 比例全集（枚举外的比例按对数距离就近吸附，如 7:4 → 16:9 档）；<br/>
+        · <b>nano 系（Gemini 原生）不走此表</b>：比例原样直传，另有 NB2 独有的 1:4、4:1、1:8、8:1 超宽超窄比例；<br/>
+        · Crun 系同样原样直译、由模型校验；各模型实际支持的子集不同，超出时上游明确报错。
       </div>
     </div>
 
@@ -138,6 +163,20 @@ import { toast } from '../ui'
 import api, { unwrap } from '../api'
 
 const groups = ref([])
+
+// OpenAI 系上游「比例×档位」官方 30 档对照表（与后端 Resolutions.SIZE_30 同源，apiyi gpt-image-2-vip 概览页）
+const size30 = [
+  { ratio: '1:1', k1: '1280x1280', k2: '2048x2048', k4: '2880x2880' },
+  { ratio: '2:3', k1: '848x1280', k2: '1360x2048', k4: '2336x3520' },
+  { ratio: '3:2', k1: '1280x848', k2: '2048x1360', k4: '3520x2336' },
+  { ratio: '3:4', k1: '960x1280', k2: '1536x2048', k4: '2480x3312' },
+  { ratio: '4:3', k1: '1280x960', k2: '2048x1536', k4: '3312x2480' },
+  { ratio: '4:5', k1: '1024x1280', k2: '1632x2048', k4: '2560x3216' },
+  { ratio: '5:4', k1: '1280x1024', k2: '2048x1632', k4: '3216x2560' },
+  { ratio: '9:16', k1: '720x1280', k2: '1152x2048', k4: '2160x3840' },
+  { ratio: '16:9', k1: '1280x720', k2: '2048x1152', k4: '3840x2160' },
+  { ratio: '21:9', k1: '1280x544', k2: '2048x864', k4: '3840x1632' }
+]
 
 const groupCodes = computed(() => groups.value.filter(g => g.enabled === 1).map(g => g.groupCode))
 const primaryGroup = computed(() => groupCodes.value[0] || '你的分组名')

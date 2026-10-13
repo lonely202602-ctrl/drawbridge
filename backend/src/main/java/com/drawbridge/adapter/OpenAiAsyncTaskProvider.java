@@ -118,12 +118,25 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
             body.put("n", cmd.n());
         }
         // 分辨率契约：业务方显式传了比例才发 size（没传不带=模型用自己的默认，修图不裁方图）；
-        // 旧版 size（deprecated）原样透传优先
-        String size = Resolutions.openAiSize(cmd.aspectRatio(), cmd.resolution(), cmd.legacySize(), rt.extra());
-        if (size != null && !size.isBlank()) {
-            body.put("size", size);
+        // 旧版 size（deprecated）原样透传优先。
+        // requestStyle=ratioTier（APIMart 风格）：size 直传比例串（16:9），档位走独立 resolution 字段
+        if ("ratioTier".equals(rt.extra().get("requestStyle"))) {
+            String legacy = cmd.legacySize();
+            if (legacy != null && !legacy.isBlank() && !"auto".equalsIgnoreCase(legacy)) {
+                body.put("size", legacy);
+            } else if (cmd.aspectRatio() != null && !cmd.aspectRatio().isBlank()) {
+                body.put("size", cmd.aspectRatio());
+            }
+            if (cmd.resolution() != null && !cmd.resolution().isBlank()) {
+                body.put("resolution", cmd.resolution());
+            }
+        } else {
+            String size = Resolutions.openAiSize(cmd.aspectRatio(), cmd.resolution(), cmd.legacySize(), rt.extra());
+            if (size != null && !size.isBlank()) {
+                body.put("size", size);
+            }
         }
-        RefImages.applyTo(body, cmd.imageUrls(), RefImages.uuapiEdits(rt, cmd.imageUrls()));
+        RefImages.applyTo(body, cmd.imageUrls(), rt);
         if (cmd.options() != null) {
             for (Map.Entry<String, Object> e : cmd.options().entrySet()) {
                 if (!RESERVED.contains(e.getKey()) && e.getValue() != null) {
@@ -192,7 +205,8 @@ public class OpenAiAsyncTaskProvider implements ImageProvider {
     }
 
     private String failMessage(JsonNode node) {
-        for (String p : new String[]{"error.message", "error", "message", "fail_message"}) {
+        // data.error.message：APIMart 统一任务壳的失败原因位置
+        for (String p : new String[]{"data.error.message", "error.message", "error", "message", "fail_message"}) {
             String t = Pointer.text(node, p);
             if (t != null) {
                 return t;

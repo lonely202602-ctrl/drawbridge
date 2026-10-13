@@ -35,7 +35,7 @@ class OpenAiImagesSyncProviderTest {
     void setUp() {
         wm = new WireMockServer(options().dynamicPort());
         wm.start();
-        provider = new OpenAiImagesSyncProvider(new UpstreamHttp());
+        provider = new OpenAiImagesSyncProvider(new UpstreamHttp(), new com.drawbridge.infrastructure.http.RefImageFetcher());
         rt = new ChannelConfigService.ChannelRuntime(
                 wm.baseUrl() + "/v1", "sk-upstream-key", Map.of(), Map.of());
     }
@@ -131,8 +131,8 @@ class OpenAiImagesSyncProviderTest {
         assertTrue(json.contains("\"n\":2"));
         assertTrue(json.contains("\"model\":\"m1\""));
         assertTrue(json.contains("\"prompt\":\"p\""));
-        // 分辨率契约：16:9 横版归档，档位在该族降级；契约键不可被 options 绕过
-        assertTrue(json.contains("\"size\":\"1536x1024\""));
+        // 分辨率契约：16:9 1k 档 = 1280x720（30 档对照表）；契约键不可被 options 绕过
+        assertTrue(json.contains("\"size\":\"1280x720\""));
         assertFalse(json.contains("HACK"));
     }
 
@@ -144,8 +144,8 @@ class OpenAiImagesSyncProviderTest {
         // 竖版归档
         ImageProvider.SubmitCommand portrait = new ImageProvider.SubmitCommand(
                 "m", "p", 1, "4k", "9:16", null, null, null, 10_000);
-        assertTrue(provider.buildRequestJson(portrait, rt).contains("\"size\":\"1024x1536\""),
-                "竖版归档 1024x1536（4k 在该族降级为最好一档）");
+        assertTrue(provider.buildRequestJson(portrait, rt).contains("\"size\":\"2160x3840\""),
+                "9:16 4k 档 = 2160x3840（30 档对照表）");
         // sizeMap 字符串 = 该档位整表覆盖（管理员显式配置的固定尺寸，横竖一律此值）
         ChannelConfigService.ChannelRuntime mapped = new ChannelConfigService.ChannelRuntime(
                 wm.baseUrl() + "/v1", "k", Map.of(),
@@ -165,6 +165,29 @@ class OpenAiImagesSyncProviderTest {
                 "m", "p", 1, "2k", "9:16", null, null, null, 10_000);
         assertTrue(provider.buildRequestJson(tier2kPortrait, byDir).contains("\"size\":\"1152x2048\""),
                 "sizeMap 按方向：9:16 → portrait");
+    }
+
+    @Test
+    void resolutionMapsExactRatioTierSizes() {
+        // 回归：21:9 与 16:9 曾被方向归档压成同一个 1536x1024——现在按 30 档对照表精确定档
+        ImageProvider.SubmitCommand cine = new ImageProvider.SubmitCommand(
+                "m", "p", 1, "2k", "21:9", null, null, null, 10_000);
+        assertTrue(provider.buildRequestJson(cine, rt).contains("\"size\":\"2048x864\""));
+        ImageProvider.SubmitCommand wide = new ImageProvider.SubmitCommand(
+                "m", "p", 1, "2k", "16:9", null, null, null, 10_000);
+        assertTrue(provider.buildRequestJson(wide, rt).contains("\"size\":\"2048x1152\""));
+        // 4K 档：21:9 → 3840x1632（满足官转约束：两边 16 倍数、≤3:1、≤8.3MP）
+        ImageProvider.SubmitCommand cine4k = new ImageProvider.SubmitCommand(
+                "m", "p", 1, "4k", "21:9", null, null, null, 10_000);
+        assertTrue(provider.buildRequestJson(cine4k, rt).contains("\"size\":\"3840x1632\""));
+        // 枚举外比例就近吸附（7:4 介于 3:2 与 16:9 之间 → 16:9 档）
+        ImageProvider.SubmitCommand odd = new ImageProvider.SubmitCommand(
+                "m", "p", 1, "1k", "7:4", null, null, null, 10_000);
+        assertTrue(provider.buildRequestJson(odd, rt).contains("\"size\":\"1280x720\""));
+        // 档位缺省按 1k（最保守）
+        ImageProvider.SubmitCommand noTier = new ImageProvider.SubmitCommand(
+                "m", "p", 1, null, "9:16", null, null, null, 10_000);
+        assertTrue(provider.buildRequestJson(noTier, rt).contains("\"size\":\"720x1280\""));
     }
 
     @Test
@@ -271,5 +294,88 @@ class OpenAiImagesSyncProviderTest {
         // 未配默认的渠道 → 完全不注入
         String untouched = provider.buildRequestJson(cmd(), rt);
         assertFalse(untouched.contains("response_format"), untouched);
+    }
+
+    // ------------------------------------------------------------------ apiyi（gpt-image 系）
+
+    /** 极小 PNG（仅魔数，供下载嗅探判型）。 */
+    private static final byte[] PNG_BYTES = {(byte) 0x89, 'P', 'N', 'G', 0xD, 0xA, 0x1A, 0xA, 0, 0};
+
+    @Test
+    void openaiEditsStyleDownloadsRefImagesAndPostsMultipart() {
+        // apiyi 裸域名配置：/v1 进路径（与 nano 渠道共享账号池的推荐写法）
+        ChannelConfigService.ChannelRuntime edits = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl(), "k", Map.of("editsSubmitPath", "/v1/images/edits"),
+                Map.of("refImageStyle", "openai_edits"));
+        wm.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(urlEqualTo("/refs/a.png"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "image/png")
+                        .withBody(PNG_BYTES)));
+        wm.stubFor(post(urlEqualTo("/v1/images/edits"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"b64_json\":\"aGVsbG8=\"}]}")));
+        ImageProvider.SubmitCommand withImg = new ImageProvider.SubmitCommand("gpt-image-2.5-flare", "改图", 1,
+                "2k", "16:9", null, List.of(wm.baseUrl() + "/refs/a.png"),
+                Map.of("quality", "high"), 10_000);
+
+        ImageProvider.SubmitOutcome.Completed done = assertInstanceOf(
+                ImageProvider.SubmitOutcome.Completed.class, provider.submit(withImg, edits));
+
+        assertTrue(done.inlineB64());
+        assertEquals(List.of("data:image/png;base64,aGVsbG8="), done.resultUrls());
+        // 命中 edits 端点、multipart 形状：文件字段 image[] + 表单字段 model/prompt/size/quality
+        wm.verify(1, postRequestedFor(urlEqualTo("/v1/images/edits")));
+        String body = wm.findAll(postRequestedFor(urlEqualTo("/v1/images/edits"))).get(0).getBodyAsString();
+        assertTrue(body.contains("Content-Disposition: form-data; name=\"image[]\"; filename=\"a.png\""), body);
+        assertTrue(body.contains("Content-Type: image/png"), body);
+        assertTrue(body.contains("name=\"model\"\r\n\r\ngpt-image-2.5-flare"), body);
+        assertTrue(body.contains("name=\"prompt\"\r\n\r\n改图"), body);
+        assertTrue(body.contains("name=\"size\"\r\n\r\n2048x1152"), body);
+        assertTrue(body.contains("name=\"quality\"\r\n\r\nhigh"), body);
+        // 存档：标注 multipart 模式与参考图来源（存档不触发下载）
+        String archive = provider.buildRequestJson(withImg, edits);
+        assertTrue(archive.contains("\"_mode\":\"multipart_edits\""), archive);
+        assertTrue(archive.contains(wm.baseUrl() + "/refs/a.png"), archive);
+    }
+
+    @Test
+    void openaiEditsRefImageFailureIsRefImageFailed() {
+        ChannelConfigService.ChannelRuntime edits = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl() + "/v1", "k", Map.of(), Map.of("refImageStyle", "openai_edits"));
+        wm.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(urlEqualTo("/missing.png"))
+                .willReturn(aResponse().withStatus(404)));
+        ImageProvider.SubmitCommand bad = new ImageProvider.SubmitCommand("m", "p", 1,
+                null, null, null, List.of(wm.baseUrl() + "/missing.png"), null, 10_000);
+        try {
+            provider.submit(bad, edits);
+            fail("应抛出 REF_IMAGE_FAILED");
+        } catch (UpstreamCallException e) {
+            assertEquals(UpstreamErrorKind.REF_IMAGE_FAILED, e.getKind());
+            assertTrue(e.getMessage().contains("HTTP 404"));
+        }
+    }
+
+    @Test
+    void dataUriStripsLegacyDataPrefix() {
+        // 官逆 gpt-image-2-all 历史版本曾返回带前缀的 b64_json：剥前缀，不产生双层 data:
+        wm.stubFor(post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"data\":[{\"b64_json\":\"data:image/png;base64,aGVsbG8=\"}]}")));
+        ImageProvider.SubmitOutcome.Completed done = assertInstanceOf(
+                ImageProvider.SubmitOutcome.Completed.class, provider.submit(cmd(), rt));
+        assertEquals(List.of("data:image/png;base64,aGVsbG8="), done.resultUrls());
+    }
+
+    @Test
+    void omitSizeExtraSuppressesSizeParam() {
+        // 官逆 gpt-image-*-all 不接受 size 字段：omitSize=true 时显式比例也不发
+        ChannelConfigService.ChannelRuntime allModel = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl() + "/v1", "k", Map.of(), Map.of("omitSize", true));
+        ImageProvider.SubmitCommand ratio = new ImageProvider.SubmitCommand("gpt-image-2-all", "p", 1,
+                "2k", "16:9", null, null, null, 10_000);
+        assertFalse(provider.buildRequestJson(ratio, allModel).contains("\"size\""));
+        // legacySize 同样被抑制
+        ImageProvider.SubmitCommand legacy = new ImageProvider.SubmitCommand("gpt-image-2-all", "p", 1,
+                null, null, "1792x1024", null, null, 10_000);
+        assertFalse(provider.buildRequestJson(legacy, allModel).contains("\"size\""));
     }
 }

@@ -39,6 +39,8 @@ public enum UpstreamErrorKind {
     PARAM_INVALID(false, ChannelAction.NONE, "PARAM_INVALID"),
     /** 异步任务在上游侧失败（轮询期）：不重试（已受理），作为任务结果返回 */
     UPSTREAM_TASK_FAILED(false, ChannelAction.NONE, "UPSTREAM_TASK_FAILED"),
+    /** 业务方参考图拉取失败（图床不可达/超时/超份量）：可换渠道重试，但不喂熔断不停渠道（锅在图床不在渠道） */
+    REF_IMAGE_FAILED(true, ChannelAction.NONE, "REF_IMAGE_FETCH_FAILED"),
     /** 未识别错误：按可重试处理 */
     UNKNOWN(true, ChannelAction.BREAKER_FEED, "UPSTREAM_ALL_FAILED");
 

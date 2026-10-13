@@ -1,0 +1,6809 @@
+{
+ "schema_version": 1,
+ "generated_at": "2026-10-12T16:23:55.753Z",
+ "source": "https://api.apiyi.com/api/pricing",
+ "pricing_version": "shell-api-modelmak-v1",
+ "contract": "https://docs.apiyi.com/skill.md",
+ "docs": "https://docs.apiyi.com/developer-kit",
+ "api_key_env": "APIYI_API_KEY",
+ "base_urls": {
+  "openai": "https://api.apiyi.com/v1",
+  "anthropic": "https://api.apiyi.com",
+  "gemini": "https://api.apiyi.com",
+  "gemini_api_version": "v1beta"
+ },
+ "nodes": [
+  "api.apiyi.com",
+  "b.apiyi.com",
+  "api-cf.apiyi.com"
+ ],
+ "endpoints": {
+  "messages": {
+   "path": "/v1/messages",
+   "method": "POST"
+  },
+  "embeddings": {
+   "path": "/v1/embeddings",
+   "method": "POST"
+  },
+  "gemini": {
+   "path": "/v1beta/models/{model}:generateContent",
+   "method": "POST"
+  },
+  "images": {
+   "path": "/v1/images/generations",
+   "method": "POST"
+  },
+  "chat": {
+   "path": "/v1/chat/completions",
+   "method": "POST"
+  },
+  "responses": {
+   "path": "/v1/responses",
+   "method": "POST"
+  },
+  "rerank": {
+   "path": "/v1/rerank",
+   "method": "POST"
+  },
+  "models": {
+   "path": "/v1/models",
+   "method": "GET"
+  },
+  "videos": {
+   "path": "/v1/videos",
+   "method": "POST"
+  },
+  "hailuo": {
+   "path": "/hailuo/v2/video_generation",
+   "method": "POST"
+  }
+ },
+ "groups": {
+  "ClaudeCode": {
+   "label": "ClaudeCode",
+   "ratio": 0.95
+  },
+  "ClaudeCodeReverse": {
+   "label": "Claude_Reverse",
+   "ratio": 0.5
+  },
+  "ClaudeOfficial": {
+   "label": "Claude_Enterprise",
+   "ratio": 1.2
+  },
+  "CodexResponses": {
+   "label": "CodexResponses",
+   "ratio": 1
+  },
+  "CodexReverse": {
+   "label": "Codex_Reverse",
+   "ratio": 0.5
+  },
+  "Gemini_Reverse": {
+   "label": "Gemini_Reverse",
+   "ratio": 0.5
+  },
+  "NB_OSS": {
+   "label": "NB_OSS",
+   "ratio": 1
+  },
+  "NanoBananaEnterprise": {
+   "label": "NB-Enterprise",
+   "ratio": 1.4
+  },
+  "SD2Fast": {
+   "label": "SD2-Fast-Cheap",
+   "ratio": 0.18
+  },
+  "SD2Mini": {
+   "label": "SD2-Mini-Cheap",
+   "ratio": 0.18
+  },
+  "SeeDance2": {
+   "label": "SeeDance2",
+   "ratio": 0.18
+  },
+  "Wan": {
+   "label": "Wan&HappyHorse",
+   "ratio": 0.14
+  },
+  "default": {
+   "label": "Default",
+   "ratio": 1
+  },
+  "image2Enterprise": {
+   "label": "image2Enterprise",
+   "ratio": 1.2
+  },
+  "image2_OSS": {
+   "label": "image2_OSS",
+   "ratio": 1
+  },
+  "svip": {
+   "label": "SVIP",
+   "ratio": 1
+  }
+ },
+ "pricing_note": "USD list prices before recharge bonuses and group discounts; the console is authoritative. Model IDs are case-sensitive and dot-versioned.",
+ "model_count": 276,
+ "models": [
+  {
+   "id": "MAI-Image-2.6",
+   "vendor_en": "Microsoft",
+   "category": "image",
+   "endpoints": [
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.12,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "MAI-Image-2.6-Flash",
+   "vendor_en": "Microsoft",
+   "category": "image",
+   "endpoints": [
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.06,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "MiniMax-H3",
+   "vendor_en": "MiniMax",
+   "category": "video",
+   "endpoints": [
+    "hailuo"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_second",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": 0.03,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "MiniMax-M2.5",
+   "vendor_en": "MiniMax",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.3,
+    "output_usd_per_m": 1.2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "MiniMax-M2.5-lightning",
+   "vendor_en": "MiniMax",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.3,
+    "output_usd_per_m": 2.4,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "MiniMax-M2.7",
+   "vendor_en": "MiniMax",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.3,
+    "output_usd_per_m": 1.2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "MiniMax-M2.7-highspeed",
+   "vendor_en": "MiniMax",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.6,
+    "output_usd_per_m": 2.4,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "MiniMax-M3",
+   "vendor_en": "MiniMax",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.3,
+    "output_usd_per_m": 1.2,
+    "cache_read_usd_per_m": 0.06,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": "https://docs.apiyi.com/models/minimax-m3"
+  },
+  {
+   "id": "bge-m3",
+   "vendor_en": "BAAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.01,
+    "output_usd_per_m": 0.01,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "bge-reranker-v2-m3",
+   "vendor_en": "BAAI",
+   "category": "rerank",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.01,
+    "output_usd_per_m": 0.01,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "chat-latest",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 30,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/chat-latest"
+  },
+  {
+   "id": "chatgpt-image-latest",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 32,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-fable-5",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 10,
+    "output_usd_per_m": 50,
+    "cache_read_usd_per_m": 1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/claude-fable-5"
+  },
+  {
+   "id": "claude-fable-5-1",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 10,
+    "output_usd_per_m": 50,
+    "cache_read_usd_per_m": 0.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/claude-fable-5-1"
+  },
+  {
+   "id": "claude-fable-5-1-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 10,
+    "output_usd_per_m": 50,
+    "cache_read_usd_per_m": 0.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/claude-fable-5-1"
+  },
+  {
+   "id": "claude-fable-5-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 10,
+    "output_usd_per_m": 50,
+    "cache_read_usd_per_m": 1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/claude-fable-5"
+  },
+  {
+   "id": "claude-haiku-4-5-20251001",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1,
+    "output_usd_per_m": 5,
+    "cache_read_usd_per_m": 0.1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-haiku-4-5-20251001-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1,
+    "output_usd_per_m": 5,
+    "cache_read_usd_per_m": 0.1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-haiku-5-5",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.1,
+    "output_usd_per_m": 0.5,
+    "cache_read_usd_per_m": 0.010000000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-haiku-5-5-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.1,
+    "output_usd_per_m": 0.5,
+    "cache_read_usd_per_m": 0.010000000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-opus-4-5-20251101",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 25,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-opus-4-5-20251101-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 25,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-opus-4-6",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 25,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-opus-4-6-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 25,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-opus-4-7",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 25,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-opus-4-7-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 25,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-opus-4-8",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 25,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/claude-opus-4-8"
+  },
+  {
+   "id": "claude-opus-4-8-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 25,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/claude-opus-4-8"
+  },
+  {
+   "id": "claude-opus-5",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 25,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/claude-opus-5"
+  },
+  {
+   "id": "claude-opus-5-5",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 4,
+    "output_usd_per_m": 20,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-opus-5-5-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 4,
+    "output_usd_per_m": 20,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-opus-5-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 25,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/claude-opus-5"
+  },
+  {
+   "id": "claude-sonnet-4-5-20250929",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 3,
+    "output_usd_per_m": 15,
+    "cache_read_usd_per_m": 0.30000000000000004,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-sonnet-4-5-20250929-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 3,
+    "output_usd_per_m": 15,
+    "cache_read_usd_per_m": 0.30000000000000004,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-sonnet-4-6",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 3,
+    "output_usd_per_m": 15,
+    "cache_read_usd_per_m": 0.30000000000000004,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-sonnet-4-6-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 3,
+    "output_usd_per_m": 15,
+    "cache_read_usd_per_m": 0.30000000000000004,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-sonnet-5",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 0.19999999999999998,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/claude-sonnet-5"
+  },
+  {
+   "id": "claude-sonnet-5-5",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-sonnet-5-5-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "claude-sonnet-5-thinking",
+   "vendor_en": "Anthropic",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "ClaudeCodeReverse",
+    "ClaudeOfficial",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/claude-sonnet-5"
+  },
+  {
+   "id": "deepseek-flash",
+   "vendor_en": "DeepSeek",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.3,
+    "output_usd_per_m": 1.2,
+    "cache_read_usd_per_m": 0.006,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "deepseek-v4-1-flash-260910",
+   "vendor_en": "DeepSeek",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.15,
+    "output_usd_per_m": 0.6,
+    "cache_read_usd_per_m": 0.003,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "deepseek-v4-flash",
+   "vendor_en": "DeepSeek",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.44,
+    "output_usd_per_m": 1.32,
+    "cache_read_usd_per_m": 0.01408,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/deepseek-v4-flash"
+  },
+  {
+   "id": "deepseek-v4-flash-0731",
+   "vendor_en": "DeepSeek",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.44,
+    "output_usd_per_m": 1.32,
+    "cache_read_usd_per_m": 0.01408,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "deepseek-v4-flash-260425",
+   "vendor_en": "DeepSeek",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.14,
+    "output_usd_per_m": 0.28,
+    "cache_read_usd_per_m": 0.028,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "deepseek-v4-flash-ga-260731",
+   "vendor_en": "DeepSeek",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.44,
+    "output_usd_per_m": 1.32,
+    "cache_read_usd_per_m": 0.01364,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "deepseek-v4-flash-vision-exp",
+   "vendor_en": "DeepSeek",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.44,
+    "output_usd_per_m": 1.32,
+    "cache_read_usd_per_m": 0.014000000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "deepseek-v4-pro",
+   "vendor_en": "DeepSeek",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.32,
+    "output_usd_per_m": 3.96,
+    "cache_read_usd_per_m": 0.0439956,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/deepseek-v4-pro"
+  },
+  {
+   "id": "deepseek-v4-pro-0813",
+   "vendor_en": "DeepSeek",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.32,
+    "output_usd_per_m": 3.96,
+    "cache_read_usd_per_m": 0.04399956000000001,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "deepseek-v4-pro-260425",
+   "vendor_en": "DeepSeek",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.74,
+    "output_usd_per_m": 3.48,
+    "cache_read_usd_per_m": 0.15,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "deepseek-v4.1-flash",
+   "vendor_en": "DeepSeek",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.3,
+    "output_usd_per_m": 1.2,
+    "cache_read_usd_per_m": 0.006,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "dola-seed-2-1-turbo-260628",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.5,
+    "output_usd_per_m": 2.5,
+    "cache_read_usd_per_m": 0.1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/dola-seed-2-1-turbo"
+  },
+  {
+   "id": "doubao-seed-1-6-250615",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.1,
+    "output_usd_per_m": 1,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "doubao-seed-1-6-251015",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.114,
+    "output_usd_per_m": 0.28500000000000003,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "doubao-seed-1-8-251228",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.25,
+    "output_usd_per_m": 2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "doubao-seedance-2-0-260128",
+   "vendor_en": "ByteDance",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "SeeDance2"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 46,
+    "output_usd_per_m": 46,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "doubao-seedance-2-0-fast-260128",
+   "vendor_en": "ByteDance",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "SD2Fast",
+    "SeeDance2"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 37,
+    "output_usd_per_m": 37,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "doubao-seedance-2-0-mini-260615",
+   "vendor_en": "ByteDance",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "SD2Mini",
+    "SeeDance2"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 23,
+    "output_usd_per_m": 23,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "doubao-seedance-2-5-260628",
+   "vendor_en": "ByteDance",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "SeeDance2"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 70,
+    "output_usd_per_m": 70,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "flux-2-flex",
+   "vendor_en": "Black Forest Labs",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.06,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "flux-2-klein-4b",
+   "vendor_en": "Black Forest Labs",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.01,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "flux-2-klein-9b",
+   "vendor_en": "Black Forest Labs",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.01,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "flux-2-max",
+   "vendor_en": "Black Forest Labs",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.07,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "flux-2-pro",
+   "vendor_en": "Black Forest Labs",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.03,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "flux-dev",
+   "vendor_en": "Black Forest Labs",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.02,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "flux-kontext-max",
+   "vendor_en": "Black Forest Labs",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.07,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "flux-kontext-pro",
+   "vendor_en": "Black Forest Labs",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.035,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-2.5-flash",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.3,
+    "output_usd_per_m": 2.4,
+    "cache_read_usd_per_m": 0.03,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-2.5-flash-image",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.02,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-2.5-flash-image-preview",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.02,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-2.5-flash-lite",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.1,
+    "output_usd_per_m": 0.4,
+    "cache_read_usd_per_m": 0.010000000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-2.5-pro",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 0.125,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3-flash-preview",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.44,
+    "output_usd_per_m": 2.64,
+    "cache_read_usd_per_m": 0.044000000000000004,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3-flash-preview-thinking",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.44,
+    "output_usd_per_m": 2.64,
+    "cache_read_usd_per_m": 0.044000000000000004,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3-pro-image",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.09,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3-pro-image-preview",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.09,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3-pro-image-preview-1k",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.09,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3-pro-image-preview-2k",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.09,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3-pro-image-preview-4k",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.09,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3-pro-preview",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.8,
+    "output_usd_per_m": 10.8,
+    "cache_read_usd_per_m": 0.18000000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3.1-flash-image",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.055,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3.1-flash-image-4k",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.055,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3.1-flash-image-preview",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.055,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3.1-flash-image-preview-4k",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.055,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3.1-flash-lite",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.25,
+    "output_usd_per_m": 1.5,
+    "cache_read_usd_per_m": 0.025,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/gemini-3-1-flash-lite"
+  },
+  {
+   "id": "gemini-3.1-flash-lite-image",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.025,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3.1-flash-lite-preview",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.25,
+    "output_usd_per_m": 1.5,
+    "cache_read_usd_per_m": 0.025,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/gemini-3-1-flash-lite"
+  },
+  {
+   "id": "gemini-3.1-pro-preview",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.8,
+    "output_usd_per_m": 10.8,
+    "cache_read_usd_per_m": 0.18000000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3.1-pro-preview-customtools",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.8,
+    "output_usd_per_m": 10.8,
+    "cache_read_usd_per_m": 0.18000000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-3.5-flash",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.5,
+    "output_usd_per_m": 9,
+    "cache_read_usd_per_m": 0.15000000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/gemini-3-5-flash"
+  },
+  {
+   "id": "gemini-3.5-flash-lite",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.3,
+    "output_usd_per_m": 2.4999,
+    "cache_read_usd_per_m": 0.03,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/gemini-3-5-flash-lite"
+  },
+  {
+   "id": "gemini-3.6-flash",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.5,
+    "output_usd_per_m": 7.5,
+    "cache_read_usd_per_m": 0.15000000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/gemini-3-6-flash"
+  },
+  {
+   "id": "gemini-3.7-flash",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.75,
+    "output_usd_per_m": 3.75,
+    "cache_read_usd_per_m": 0.07500000000000001,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/gemini-3-7-flash"
+  },
+  {
+   "id": "gemini-3.8-flash",
+   "vendor_en": "Google",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Gemini_Reverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.75,
+    "output_usd_per_m": 3.75,
+    "cache_read_usd_per_m": 0.07500000000000001,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/gemini-3-8-flash"
+  },
+  {
+   "id": "gemini-embedding-001",
+   "vendor_en": "Google",
+   "category": "embedding",
+   "endpoints": [
+    "chat",
+    "gemini",
+    "embeddings"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.15,
+    "output_usd_per_m": 0.44999999999999996,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-embedding-2",
+   "vendor_en": "Google",
+   "category": "embedding",
+   "endpoints": [
+    "chat",
+    "gemini",
+    "embeddings"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.2,
+    "output_usd_per_m": 0.2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-embedding-2-preview",
+   "vendor_en": "Google",
+   "category": "embedding",
+   "endpoints": [
+    "chat",
+    "gemini",
+    "embeddings"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.3,
+    "output_usd_per_m": 0.8999999999999999,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gemini-nano-banana-2.1",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.045,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "glm-5",
+   "vendor_en": "Zhipu",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.56,
+    "output_usd_per_m": 2.5200000000000005,
+    "cache_read_usd_per_m": 0.05600000000000001,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "glm-5-3-flash-260828",
+   "vendor_en": "Zhipu",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.15,
+    "output_usd_per_m": 0.49999499999999997,
+    "cache_read_usd_per_m": 0.03,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "glm-5.1",
+   "vendor_en": "Zhipu",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.84,
+    "output_usd_per_m": 3.36,
+    "cache_read_usd_per_m": 0.084,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "glm-5.2",
+   "vendor_en": "Zhipu",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.142,
+    "output_usd_per_m": 3.997,
+    "cache_read_usd_per_m": 0.2284,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/glm-5-2"
+  },
+  {
+   "id": "glm-5.3",
+   "vendor_en": "Zhipu",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.4,
+    "output_usd_per_m": 4.396,
+    "cache_read_usd_per_m": 0.259,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/glm-5-3"
+  },
+  {
+   "id": "glm-5.3-flash",
+   "vendor_en": "Zhipu",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.15,
+    "output_usd_per_m": 0.5,
+    "cache_read_usd_per_m": 0.03,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/glm-5-3-flash"
+  },
+  {
+   "id": "gpt-3.5-turbo",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.5,
+    "output_usd_per_m": 1.5,
+    "cache_read_usd_per_m": 0.05,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-3.5-turbo-0125",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.5,
+    "output_usd_per_m": 1.5,
+    "cache_read_usd_per_m": 0.05,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-3.5-turbo-0613",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.5,
+    "output_usd_per_m": 1.9500000000000002,
+    "cache_read_usd_per_m": 0.15000000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-3.5-turbo-1106",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1,
+    "output_usd_per_m": 2,
+    "cache_read_usd_per_m": 0.1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-3.5-turbo-16k",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 3,
+    "output_usd_per_m": 3.9000000000000004,
+    "cache_read_usd_per_m": 0.30000000000000004,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-3.5-turbo-16k-0613",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 3,
+    "output_usd_per_m": 3.9000000000000004,
+    "cache_read_usd_per_m": 0.30000000000000004,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4.1",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 8,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4.1-2025-04-14",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 8,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4.1-mini",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.4,
+    "output_usd_per_m": 1.6,
+    "cache_read_usd_per_m": 0.1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4.1-mini-2025-04-14",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.4,
+    "output_usd_per_m": 1.6,
+    "cache_read_usd_per_m": 0.1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4.1-nano",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.1,
+    "output_usd_per_m": 0.4,
+    "cache_read_usd_per_m": 0.025,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4.1-nano-2025-04-14",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.1,
+    "output_usd_per_m": 0.4,
+    "cache_read_usd_per_m": 0.025,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4o",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2.5,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4o-2024-05-13",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 15,
+    "cache_read_usd_per_m": 2.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4o-2024-08-06",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2.5,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4o-2024-11-20",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2.5,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4o-mini",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.15,
+    "output_usd_per_m": 0.6,
+    "cache_read_usd_per_m": 0.075,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-4o-mini-2024-07-18",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.15,
+    "output_usd_per_m": 0.6,
+    "cache_read_usd_per_m": 0.075,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 0.125,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5-2025-08-07",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 0.125,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5-codex",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 0.125,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5-mini",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.25,
+    "output_usd_per_m": 2,
+    "cache_read_usd_per_m": 0.025,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5-mini-2025-08-07",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.25,
+    "output_usd_per_m": 2,
+    "cache_read_usd_per_m": 0.025,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5-nano",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.05,
+    "output_usd_per_m": 0.4,
+    "cache_read_usd_per_m": 0.005000000000000001,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5-nano-2025-08-07",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.05,
+    "output_usd_per_m": 0.4,
+    "cache_read_usd_per_m": 0.005000000000000001,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5-pro",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 15,
+    "output_usd_per_m": 120,
+    "cache_read_usd_per_m": 1.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5-pro-2025-10-06",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 15,
+    "output_usd_per_m": 120,
+    "cache_read_usd_per_m": 1.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.1",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 0.125,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.1-codex",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.02,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.1-codex-mini",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 3.75,
+    "cache_read_usd_per_m": 0.125,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.2",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.75,
+    "output_usd_per_m": 14,
+    "cache_read_usd_per_m": 0.17500000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.2-pro",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 21,
+    "output_usd_per_m": 168,
+    "cache_read_usd_per_m": 2.1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.2-pro-2025-12-11",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 21,
+    "output_usd_per_m": 168,
+    "cache_read_usd_per_m": 2.1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.4",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2.5,
+    "output_usd_per_m": 15,
+    "cache_read_usd_per_m": 0.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.4-mini",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.75,
+    "output_usd_per_m": 4.5,
+    "cache_read_usd_per_m": 0.075,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.4-nano",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.2,
+    "output_usd_per_m": 1.25,
+    "cache_read_usd_per_m": 0.02,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.4-nano-2026-03-17",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.2,
+    "output_usd_per_m": 1.25,
+    "cache_read_usd_per_m": 0.02,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.4-pro",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 30,
+    "output_usd_per_m": 180,
+    "cache_read_usd_per_m": 3,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.5",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "CodexResponses",
+    "CodexReverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 30,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-5.5-pro",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 30,
+    "output_usd_per_m": 180,
+    "cache_read_usd_per_m": 3,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": "https://docs.apiyi.com/models/gpt-5-5-pro"
+  },
+  {
+   "id": "gpt-5.6-luna",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.2,
+    "output_usd_per_m": 1.2000000000000002,
+    "cache_read_usd_per_m": 0.020000000000000004,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": "https://docs.apiyi.com/models/gpt-5-6-luna"
+  },
+  {
+   "id": "gpt-5.6-sol",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "CodexResponses",
+    "CodexReverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 4,
+    "output_usd_per_m": 20,
+    "cache_read_usd_per_m": 0.4,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": "https://docs.apiyi.com/models/gpt-5-6-sol"
+  },
+  {
+   "id": "gpt-5.6-terra",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "CodexResponses",
+    "CodexReverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 12,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": "https://docs.apiyi.com/models/gpt-5-6-terra"
+  },
+  {
+   "id": "gpt-6-astra",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "CodexResponses",
+    "CodexReverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 10,
+    "output_usd_per_m": 50,
+    "cache_read_usd_per_m": 1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-6-luna",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.1,
+    "output_usd_per_m": 0.5,
+    "cache_read_usd_per_m": 0.010000000000000002,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-6-sol",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "CodexResponses",
+    "CodexReverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-6.1-sol",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": "responses",
+   "groups": [
+    "CodexResponses",
+    "CodexReverse",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 10,
+    "cache_read_usd_per_m": 0.1,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-1",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2Enterprise",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 40,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-1-mini",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2Enterprise",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 8,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-1.5",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2Enterprise",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 32,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-1.5-2025-12-16",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 32,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-2",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2Enterprise",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 30,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-2-all",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2_OSS",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.025,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-2-vip",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2_OSS",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.03,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-2.5-all",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2_OSS",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.025,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-2.5-flare",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2Enterprise",
+    "image2_OSS",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 30,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-2.5-flare-2026-09-08",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2Enterprise",
+    "image2_OSS",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 30,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-2.5-flare-vip",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2_OSS",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.03,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-2.5-sunburst",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2Enterprise",
+    "image2_OSS",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 30,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-2.5-sunburst-2026-09-08",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2Enterprise",
+    "image2_OSS",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 5,
+    "output_usd_per_m": 30,
+    "cache_read_usd_per_m": 1.25,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-2.5-sunburst-vip",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2_OSS",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.03,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-image-2.5-vip",
+   "vendor_en": "OpenAI",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "images"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "image2_OSS",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.03,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-oss-120b",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.5,
+    "output_usd_per_m": 2,
+    "cache_read_usd_per_m": 0.05,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-realtime-2.1",
+   "vendor_en": "OpenAI",
+   "category": "audio",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 4,
+    "output_usd_per_m": 24,
+    "cache_read_usd_per_m": 0.4,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "gpt-realtime-2.1-mini",
+   "vendor_en": "OpenAI",
+   "category": "audio",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.6,
+    "output_usd_per_m": 2.4,
+    "cache_read_usd_per_m": 0.06,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "grok-4.20-0309-non-reasoning",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 2.5,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "grok-4.20-0309-reasoning",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 2.5,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "grok-4.20-beta",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 2.5,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "grok-4.20-multi-agent-0309",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 2.5,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "grok-4.20-multi-agent-beta-0309",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 2.5,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "grok-4.3",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.25,
+    "output_usd_per_m": 2.5,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": "https://docs.apiyi.com/models/grok-4-3"
+  },
+  {
+   "id": "grok-4.5",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 6,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": "https://docs.apiyi.com/models/grok-4-5"
+  },
+  {
+   "id": "grok-4.6",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 6,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": "https://docs.apiyi.com/models/grok-4-6"
+  },
+  {
+   "id": "grok-4.7",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 6,
+    "cache_read_usd_per_m": 0.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "grok-build-0.1",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1,
+    "output_usd_per_m": 2,
+    "cache_read_usd_per_m": 0.2,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "grok-code-fast",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.2,
+    "output_usd_per_m": 1.5,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "grok-code-fast-1",
+   "vendor_en": "xAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.2,
+    "output_usd_per_m": 1.5,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "happyhorse-1.0-video-edit",
+   "vendor_en": "HappyHorse",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.8,
+    "output_usd_per_m": 1.8,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "happyhorse-1.1-i2v",
+   "vendor_en": "HappyHorse",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.8,
+    "output_usd_per_m": 1.8,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "happyhorse-1.1-r2v",
+   "vendor_en": "HappyHorse",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.8,
+    "output_usd_per_m": 1.8,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "happyhorse-1.1-t2v",
+   "vendor_en": "HappyHorse",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.8,
+    "output_usd_per_m": 1.8,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "kimi-k2.5",
+   "vendor_en": "Moonshot",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.6,
+    "output_usd_per_m": 3.15,
+    "cache_read_usd_per_m": 0.09999999999999999,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "kimi-k2.6",
+   "vendor_en": "Moonshot",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.6,
+    "output_usd_per_m": 2.4,
+    "cache_read_usd_per_m": 0.10105263157894737,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "kimi-k2.7-code",
+   "vendor_en": "Moonshot",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.95,
+    "output_usd_per_m": 3.9899999999999998,
+    "cache_read_usd_per_m": 0.19,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "kimi-k3",
+   "vendor_en": "Moonshot",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 3,
+    "output_usd_per_m": 15,
+    "cache_read_usd_per_m": 0.3,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/kimi-k3"
+  },
+  {
+   "id": "multimodal-embedding-v1",
+   "vendor_en": "Alibaba",
+   "category": "embedding",
+   "endpoints": [
+    "chat",
+    "embeddings"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.0001,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "nano-banana",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.02,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "nano-banana-2",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.055,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "nano-banana-pro",
+   "vendor_en": "Google",
+   "category": "image",
+   "endpoints": [
+    "chat",
+    "gemini"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "NB_OSS",
+    "NanoBananaEnterprise",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.09,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o1",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 15,
+    "output_usd_per_m": 60,
+    "cache_read_usd_per_m": 7.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o1-2024-12-17",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 15,
+    "output_usd_per_m": 60,
+    "cache_read_usd_per_m": 7.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o1-mini",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.1,
+    "output_usd_per_m": 4.4,
+    "cache_read_usd_per_m": 0.55,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o1-mini-2024-09-12",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.1,
+    "output_usd_per_m": 4.4,
+    "cache_read_usd_per_m": 0.55,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o1-preview",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 15,
+    "output_usd_per_m": 60,
+    "cache_read_usd_per_m": 7.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o1-preview-2024-09-12",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 15,
+    "output_usd_per_m": 60,
+    "cache_read_usd_per_m": 7.5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o3",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 3,
+    "output_usd_per_m": 12,
+    "cache_read_usd_per_m": 0.75,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o3-2025-04-16",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 3,
+    "output_usd_per_m": 12,
+    "cache_read_usd_per_m": 0.75,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o3-mini",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.1,
+    "output_usd_per_m": 4.4,
+    "cache_read_usd_per_m": 0.55,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o3-mini-2025-01-31",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.1,
+    "output_usd_per_m": 4.4,
+    "cache_read_usd_per_m": 0.55,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o3-pro",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "responses"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 20,
+    "output_usd_per_m": 80,
+    "cache_read_usd_per_m": 5,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o4-mini",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.1,
+    "output_usd_per_m": 4.4,
+    "cache_read_usd_per_m": 0.275,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "o4-mini-2025-04-16",
+   "vendor_en": "OpenAI",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.1,
+    "output_usd_per_m": 4.4,
+    "cache_read_usd_per_m": 0.275,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "omni-moderation-2024-09-26",
+   "vendor_en": "OpenAI",
+   "category": "moderation",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.2,
+    "output_usd_per_m": 0.2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "omni-moderation-latest",
+   "vendor_en": "OpenAI",
+   "category": "moderation",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.2,
+    "output_usd_per_m": 0.2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "oxygen-1.0",
+   "vendor_en": "AZ8",
+   "category": "video",
+   "endpoints": [
+    "videos"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_second",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": 0.02,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen-long",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.07,
+    "output_usd_per_m": 0.28,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen-max",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.6,
+    "output_usd_per_m": 6.4,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen-mt-plus",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 2,
+    "output_usd_per_m": 8,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen-plus",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.4,
+    "output_usd_per_m": 1.2000000000000002,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen-plus-latest",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.4,
+    "output_usd_per_m": 1.2000000000000002,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen-vl-ocr",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.72,
+    "output_usd_per_m": 0.72,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen-vl-ocr-2025-11-20",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.044,
+    "output_usd_per_m": 0.07347999999999999,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3-coder-flash",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.5,
+    "output_usd_per_m": 5,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3-omni-flash",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.6,
+    "output_usd_per_m": 6,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3-vl-embedding",
+   "vendor_en": "Alibaba",
+   "category": "embedding",
+   "endpoints": [
+    "chat",
+    "embeddings"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.0001,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3-vl-plus",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.3,
+    "output_usd_per_m": 2.4,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-122b-a10b",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.12,
+    "output_usd_per_m": 0.96,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-27b",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.09,
+    "output_usd_per_m": 0.72,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-35b-a3b",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.06,
+    "output_usd_per_m": 0.48,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-397b-a17b",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.18,
+    "output_usd_per_m": 1.08,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-flash",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.03,
+    "output_usd_per_m": 0.3,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-flash-2026-02-23",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.03,
+    "output_usd_per_m": 0.3,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-omni-flash",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.35,
+    "output_usd_per_m": 2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-omni-flash-realtime",
+   "vendor_en": "Alibaba",
+   "category": "audio",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.45,
+    "output_usd_per_m": 2.75,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-omni-plus",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.2,
+    "output_usd_per_m": 6,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-omni-plus-realtime",
+   "vendor_en": "Alibaba",
+   "category": "audio",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.38,
+    "output_usd_per_m": 8.25,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-plus",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.114,
+    "output_usd_per_m": 0.684,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.5-plus-2026-02-15",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.114,
+    "output_usd_per_m": 0.684,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.6-27b",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.42,
+    "output_usd_per_m": 2.52,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.6-35b-a3b",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.26,
+    "output_usd_per_m": 1.56,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.6-flash",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.17,
+    "output_usd_per_m": 1.02,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.6-plus",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.3,
+    "output_usd_per_m": 1.7999999999999998,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.7-flash",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.16,
+    "output_usd_per_m": 0.64,
+    "cache_read_usd_per_m": 0.04,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/qwen3-7-flash"
+  },
+  {
+   "id": "qwen3.7-max",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.714,
+    "output_usd_per_m": 5.1419999999999995,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/qwen3-7-max"
+  },
+  {
+   "id": "qwen3.7-plus",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.6,
+    "output_usd_per_m": 2.4,
+    "cache_read_usd_per_m": 0.06,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.8-2.4t-a95b",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.72,
+    "output_usd_per_m": 5.16,
+    "cache_read_usd_per_m": 0.215,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/qwen3-8-2-4t-a95b"
+  },
+  {
+   "id": "qwen3.8-27b",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.44,
+    "output_usd_per_m": 1.76,
+    "cache_read_usd_per_m": 0.08800000000000001,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/qwen3-8-27b"
+  },
+  {
+   "id": "qwen3.8-flash",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.114,
+    "output_usd_per_m": 0.3876,
+    "cache_read_usd_per_m": 0.01425,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": "https://docs.apiyi.com/models/qwen3-8-flash"
+  },
+  {
+   "id": "qwen3.8-max",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat",
+    "messages"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "ClaudeCode",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.65,
+    "output_usd_per_m": 4.949999999999999,
+    "cache_read_usd_per_m": 0.20625,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "qwen3.8-max-0902",
+   "vendor_en": "Alibaba",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.65,
+    "output_usd_per_m": 4.949999999999999,
+    "cache_read_usd_per_m": 0.20625,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seed-1-6-250615",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.1,
+    "output_usd_per_m": 1,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seed-1-6-flash-250615",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.075,
+    "output_usd_per_m": 0.3,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seed-1-6-flash-250715",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.075,
+    "output_usd_per_m": 0.3,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seed-1-8-251228",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.25,
+    "output_usd_per_m": 2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seed-2-0-code-preview-260328",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.5,
+    "output_usd_per_m": 3,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seed-2-0-lite-260228",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.25,
+    "output_usd_per_m": 2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seed-2-0-lite-260428",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.25,
+    "output_usd_per_m": 2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seed-2-0-mini-260215",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.1,
+    "output_usd_per_m": 0.4,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seed-2-0-mini-260428",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.1,
+    "output_usd_per_m": 0.4,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seed-2-0-pro-260328",
+   "vendor_en": "ByteDance",
+   "category": "text",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "CodexResponses",
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.5,
+    "output_usd_per_m": 3,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": true
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seedream-4-0-250828",
+   "vendor_en": "ByteDance",
+   "category": "image",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.035,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seedream-4-5-251128",
+   "vendor_en": "ByteDance",
+   "category": "image",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.04,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seedream-5-0-260128",
+   "vendor_en": "ByteDance",
+   "category": "image",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.035,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seedream-5-0-flash-260915",
+   "vendor_en": "ByteDance",
+   "category": "image",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.018,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "seedream-5-0-pro-260628",
+   "vendor_en": "ByteDance",
+   "category": "image",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.12,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "text-embedding-3-large",
+   "vendor_en": "OpenAI",
+   "category": "embedding",
+   "endpoints": [
+    "chat",
+    "embeddings"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.13,
+    "output_usd_per_m": 0.13,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "text-embedding-3-small",
+   "vendor_en": "OpenAI",
+   "category": "embedding",
+   "endpoints": [
+    "chat",
+    "embeddings"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.02,
+    "output_usd_per_m": 0.02,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "text-embedding-ada-002",
+   "vendor_en": "OpenAI",
+   "category": "embedding",
+   "endpoints": [
+    "chat",
+    "embeddings"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 0.1,
+    "output_usd_per_m": 0.1,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "tts-1",
+   "vendor_en": "OpenAI",
+   "category": "audio",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 30,
+    "output_usd_per_m": 30,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "tts-1-hd",
+   "vendor_en": "OpenAI",
+   "category": "audio",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 60,
+    "output_usd_per_m": 60,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "veo-3.1-fast-generate-preview",
+   "vendor_en": "Google",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 0.3,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "veo-3.1-generate-preview",
+   "vendor_en": "Google",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "default",
+    "svip"
+   ],
+   "billing": {
+    "type": "per_call",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": 1.2,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "wan2.6-i2v",
+   "vendor_en": "Alibaba",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.2,
+    "output_usd_per_m": 1.2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "wan2.6-r2v",
+   "vendor_en": "Alibaba",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 75,
+    "output_usd_per_m": 75,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "wan2.6-r2v-flash",
+   "vendor_en": "Alibaba",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 75,
+    "output_usd_per_m": 75,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "wan2.6-t2v",
+   "vendor_en": "Alibaba",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_token",
+    "input_usd_per_m": 1.2,
+    "output_usd_per_m": 1.2,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": null,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "wan2.7-i2v",
+   "vendor_en": "Alibaba",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_second",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": 0.084,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "wan2.7-r2v",
+   "vendor_en": "Alibaba",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_second",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": 0.084,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "wan2.7-t2v",
+   "vendor_en": "Alibaba",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_second",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": 0.084,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "wan2.7-videoedit",
+   "vendor_en": "Alibaba",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_second",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": 0.084,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "wan3.0-video",
+   "vendor_en": "Alibaba",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_second",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": 0.0294,
+    "tiered": false
+   },
+   "docs_url": null
+  },
+  {
+   "id": "wan3.0-video-prime",
+   "vendor_en": "Alibaba",
+   "category": "video",
+   "endpoints": [
+    "chat"
+   ],
+   "recommended_endpoint": null,
+   "groups": [
+    "Wan"
+   ],
+   "billing": {
+    "type": "per_second",
+    "input_usd_per_m": null,
+    "output_usd_per_m": null,
+    "cache_read_usd_per_m": null,
+    "per_call_usd": null,
+    "per_second_usd": 0.063,
+    "tiered": false
+   },
+   "docs_url": null
+  }
+ ]
+}

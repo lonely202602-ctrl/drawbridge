@@ -32,6 +32,40 @@ public class UpstreamHttp {
         return exchange("POST", url, headers, jsonBody, timeoutMs);
     }
 
+    /** multipart/form-data 提交（OpenAI images/edits 文件上传）；请求体为字节，响应仍按字符串读。 */
+    public HttpResult postMultipart(String url, Map<String, String> headers, MultipartBody body, int timeoutMs) {
+        HttpRequest.Builder builder;
+        try {
+            builder = HttpRequest.newBuilder(URI.create(url));
+        } catch (IllegalArgumentException e) {
+            throw UpstreamCallException.network("上游地址不合法");
+        }
+        builder.timeout(Duration.ofMillis(Math.max(1000, timeoutMs)))
+                .header("Accept", "application/json")
+                .header("Content-Type", body.contentType())
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body.payload()));
+        if (headers != null) {
+            headers.forEach(builder::header);
+        }
+        try {
+            HttpResponse<String> response =
+                    client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            if (log.isDebugEnabled()) {
+                log.debug("上游响应: url={} status={} bodyHead={}",
+                        url, response.statusCode(), head(response.body()));
+            }
+            return new HttpResult(response.statusCode(), response.body());
+        } catch (java.net.http.HttpTimeoutException e) {
+            throw UpstreamCallException.network("上游请求超时（" + timeoutMs + "ms）");
+        } catch (java.io.IOException e) {
+            throw UpstreamCallException.network("上游连接失败: " + rootMessage(e));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new UpstreamCallException(com.drawbridge.adapter.UpstreamErrorKind.SHUTDOWN_INTERRUPT,
+                    "请求被停机中断", null);
+        }
+    }
+
     public HttpResult exchange(String method, String url, Map<String, String> headers,
                                String jsonBody, int timeoutMs) {
         HttpRequest.Builder builder;

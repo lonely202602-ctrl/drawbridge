@@ -1,6 +1,7 @@
 package com.drawbridge.integration;
 
 import com.drawbridge.domain.entity.Channel;
+import com.drawbridge.domain.entity.DisableBatch;
 import com.drawbridge.domain.entity.GenerateTask;
 import com.drawbridge.domain.entity.GroupMember;
 import com.drawbridge.domain.entity.ModelGroup;
@@ -56,6 +57,7 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -117,6 +119,10 @@ class GatewayIntegrationTest {
     com.drawbridge.health.AccountRegistry accountRegistry;
     @Resource
     com.drawbridge.task.StuckSweeper stuckSweeper;
+    @Resource
+    com.drawbridge.domain.mapper.DisableBatchMapper disableBatchMapper;
+    @Resource
+    com.drawbridge.health.CooldownRegistry cooldownRegistry;
 
     /**
      * 任务表写库故障注入：包装真实 mapper，测试可按 SQL SET 片段定点让某次 update 抛异常
@@ -438,6 +444,60 @@ class GatewayIntegrationTest {
                 .andExpect(jsonPath("$.data.result.urls[0]").value("https://cdn.result/2.png"));
     }
 
+    @org.junit.jupiter.api.DisplayName("APIMart 统一任务协议全链：{code,data[0].task_id} 提交壳 + /tasks/{id} 轮询 + url 数组取图")
+    @Test
+    void apimartFullChain() throws Exception {
+        Channel ch = seedChannel("APIMart渠道", "OPENAI_ASYNC_TASK", WM.baseUrl() + "/v1",
+                "sk-apa", Map.of(
+                        "idField", "data[0].task_id",
+                        "queryPath", "/tasks/{id}",
+                        "statusField", "data.status",
+                        "urlField", "data.result.images[*].url[*]",
+                        "refImageStyle", "image_urls",
+                        "requestStyle", "ratioTier"));
+        seedGroup("nano-banana", "0.02", List.of(ch), List.of("gemini-nano-banana-2.1"));
+        String sk = seedToken(1L, "sk-apimart-aaaaa", "10.00", null);
+        refreshSnapshot();
+
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"code\":200,\"data\":[{\"status\":\"submitted\",\"task_id\":\"task_01KXYZ\"}]}")));
+        WM.stubFor(WireMock.get(urlEqualTo("/v1/tasks/task_01KXYZ"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"code\":200,\"data\":{\"id\":\"task_01KXYZ\",\"status\":\"processing\",\"progress\":30}}")));
+
+        String resp = submit(sk, "{\"model\":\"nano-banana\",\"prompt\":\"一只橘猫\","
+                + "\"aspectRatio\":\"16:9\",\"resolution\":\"2k\",\"images\":[\"https://ref.example/cat.jpg\"]}");
+        String taskId = field(resp, "taskId");
+        assertTrue(List.of("SUBMITTED", "RUNNING").contains(field(resp, "status")),
+                "提交应立即返回非终态: " + field(resp, "status"));
+
+        // 轮询查到完成：url 是数组，两张全收
+        WM.stubFor(WireMock.get(urlEqualTo("/v1/tasks/task_01KXYZ"))
+                .willReturn(aResponse().withStatus(200).withBody(
+                        "{\"code\":200,\"data\":{\"id\":\"task_01KXYZ\",\"status\":\"completed\",\"progress\":100,"
+                                + "\"result\":{\"images\":[{\"url\":[\"https://cdn.apimart/1.png\",\"https://cdn.apimart/2.png\"],"
+                                + "\"expires_at\":1791417625}]}}}")));
+        GenerateTask task = awaitTerminal(taskId);
+        assertEquals("SUCCEEDED", task.getStatus());
+        assertEquals("task_01KXYZ", task.getUpstreamTaskId());
+        assertEquals(ch.getId(), task.getChannelId());
+
+        // 发上游的请求体（派发线程发出后才有存根记录）：size=比例串直传（ratioTier）、
+        // resolution 独立档位字段、参考图 image_urls 数组
+        String upstreamBody = WM.findAll(WireMock.postRequestedFor(WireMock.urlEqualTo("/v1/images/generations")))
+                .get(0).getBodyAsString();
+        assertTrue(upstreamBody.contains("\"size\":\"16:9\""), upstreamBody);
+        assertTrue(upstreamBody.contains("\"resolution\":\"2k\""), upstreamBody);
+        assertTrue(upstreamBody.contains("\"image_urls\":[\"https://ref.example/cat.jpg\"]"), upstreamBody);
+
+        mvc.perform(get("/v1/images/tasks/" + taskId).header("Authorization", "Bearer " + sk))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data.result.urls[0]").value("https://cdn.apimart/1.png"))
+                .andExpect(jsonPath("$.data.result.urls[1]").value("https://cdn.apimart/2.png"));
+    }
+
     @org.junit.jupiter.api.DisplayName("故障转移：A 渠道 5xx → B 渠道接手成功，重试时间线完整")
     @Test
     void failoverOnServerError() throws Exception {
@@ -737,9 +797,10 @@ class GatewayIntegrationTest {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString())
                 .path("data").asText();
 
-        // 试跑（WireMock 给 /models 通）
+        // 试跑（WireMock 给 /models 通；模型名须像生图族——同步模型按协议族过滤，chat 类名会被滤掉）
         WM.stubFor(WireMock.get(urlEqualTo("/v1/models"))
-                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"id\":\"m1\"},{\"id\":\"m2\"}]}")));
+                .willReturn(aResponse().withStatus(200).withBody(
+                        "{\"data\":[{\"id\":\"gpt-image-2.5-flare\"},{\"id\":\"gpt-image-2-all\"}]}")));
         mvc.perform(post("/admin/channels/" + channelId + "/test-run").header("X-Admin-Token", admin))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.result").value("连通正常，Key 有效"));
@@ -1402,19 +1463,19 @@ class GatewayIntegrationTest {
                         "{\"code\":200,\"data\":{\"status\":\"success\","
                                 + "\"result\":{\"media_urls\":[\"https://files.crun/r.png\"]}}}")));
 
-        // 竖版 9:16 → OpenAI 系归档 1024x1536
+        // 竖版 9:16 → 30 档对照表 1k 档（档位缺省按 1k）
         submitAndAwait(sk, "{\"model\":\"p1rs.model\",\"prompt\":\"PORTRAIT-MARK\",\"aspectRatio\":\"9:16\"}");
         String portrait = WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations")))
                 .stream().filter(r -> r.getBodyAsString().contains("PORTRAIT-MARK")).findFirst().orElseThrow()
                 .getBodyAsString();
-        assertTrue(portrait.contains("\"size\":\"1024x1536\""), portrait);
+        assertTrue(portrait.contains("\"size\":\"720x1280\""), portrait);
 
-        // 4k + 16:9 → 该族只有~1k，降级为横版最好一档
+        // 4k + 16:9 → 3840x2160（不再降级，30 档对照表精确定档）
         submitAndAwait(sk, "{\"model\":\"p1rs.model\",\"prompt\":\"DEGRADE-MARK\",\"aspectRatio\":\"16:9\",\"resolution\":\"4k\"}");
         String degraded = WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations")))
                 .stream().filter(r -> r.getBodyAsString().contains("DEGRADE-MARK")).findFirst().orElseThrow()
                 .getBodyAsString();
-        assertTrue(degraded.contains("\"size\":\"1536x1024\""), degraded);
+        assertTrue(degraded.contains("\"size\":\"3840x2160\""), degraded);
 
         // 缺省（不传比例/档位）→ 不带 size：模型用自己的默认，修图不裁方图
         submitAndAwait(sk, "{\"model\":\"p1rs.model\",\"prompt\":\"DEFAULT-MARK\"}");
@@ -2060,5 +2121,606 @@ class GatewayIntegrationTest {
                 .withHeader("Authorization", containing("sk-idle-a"))).size(), "饱和的 1 号不应被打到");
         assertEquals(1, WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations"))
                 .withHeader("Authorization", containing("sk-idle-b"))).size(), "空闲的 2 号接单");
+    }
+
+    // ------------------------------------------------------------------ 第四轮交叉测试修复（2026-10-13）
+
+    @org.junit.jupiter.api.DisplayName("修1：编辑渠道换 API Key——密文必须落库，账号键/容量随新 Key 走")
+    @Test
+    void channelUpdatePersistsRotatedApiKey() throws Exception {
+        String admin = adminToken();
+        String created = mvc.perform(post("/admin/channels").header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"name\":\"换Key渠道\",\"protocol\":\"OPENAI_IMAGES_SYNC\","
+                                + "\"baseUrl\":\"" + WM.baseUrl() + "/v1\",\"apiKey\":\"sk-old-key-111\",\"maxConcurrency\":3}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long id = com.drawbridge.common.JsonUtil.readTree(created).path("data").asLong();
+
+        // 换 Key：新密文必须写库（旧实现丢了 setApiKeyEnc——提示保存成功但上游仍用旧 Key），账号键按新 Key 计算
+        String newKey = "sk-new-key-222";
+        mvc.perform(put("/admin/channels/" + id).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"name\":\"换Key渠道\",\"protocol\":\"OPENAI_IMAGES_SYNC\","
+                                + "\"baseUrl\":\"" + WM.baseUrl() + "/v1\",\"apiKey\":\"" + newKey
+                                + "\",\"maxConcurrency\":4}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accountChanged").value(true));
+        Channel ch = channelMapper.selectById(id);
+        assertEquals(newKey, cipher.decrypt(ch.getApiKeyEnc()), "换 Key 后密文必须是新 Key");
+        String newAccountKey = accountRegistry.computeKey(WM.baseUrl() + "/v1", newKey);
+        assertEquals(newAccountKey, ch.getAccountKey(), "账号键必须按新 Key 重算");
+        assertEquals(4, accountRegistry.capacityOf(newAccountKey), "容量随表单值落到新账号");
+
+        // 不重传 Key 只改备注：存量密文不动
+        mvc.perform(put("/admin/channels/" + id).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"name\":\"换Key渠道\",\"protocol\":\"OPENAI_IMAGES_SYNC\","
+                                + "\"baseUrl\":\"" + WM.baseUrl() + "/v1\",\"maxConcurrency\":4,\"remark\":\"只改备注\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accountChanged").value(false));
+        assertEquals(newKey, cipher.decrypt(channelMapper.selectById(id).getApiKeyEnc()),
+                "未重传 Key 不得动存量密文");
+    }
+
+    @org.junit.jupiter.api.DisplayName("修2：清扫②把提交链路崩溃残留退回队列，expires_at 恢复排队死线（旧实现 .apply 拼进 WHERE 永不生效）")
+    @Test
+    void sweeperRequeuesCrashedSubmitsWithQueueDeadlineRestored() {
+        LocalDateTime now = LocalDateTime.now();
+        // 崩溃残留：RUNNING、无任务号、无存档、停滞超 stale 窗口；expires_at 是未到的执行死线（证明被 SET 重置而非 WHERE 撞上）
+        GenerateTask crashed = insertRunningCrashedTask(now.minusMinutes(11), now.plusMinutes(10));
+        // 对照组：已存档请求体（可能已受理上游）→ 绝不自动重跑
+        GenerateTask archived = insertRunningCrashedTask(now.minusMinutes(11), now.plusMinutes(10));
+        jdbc.update("UPDATE generate_task SET upstream_request = '{\"model\":\"x\"}' WHERE id = " + archived.getId());
+
+        stuckSweeper.sweep();
+
+        GenerateTask requeued = taskMapper.selectById(crashed.getId());
+        assertEquals("SUBMITTED", requeued.getStatus(), "崩溃残留必须退回队列");
+        assertNull(requeued.getChannelId(), "退队必须清渠道绑定（槽位出账）");
+        LocalDateTime deadline = requeued.getCreatedAt().plusSeconds(1800);
+        assertTrue(Math.abs(java.time.Duration.between(requeued.getExpiresAt(), deadline).getSeconds()) <= 2,
+                "expires_at 应恢复为 created_at+30min 排队死线，实际=" + requeued.getExpiresAt());
+        assertEquals("RUNNING", taskMapper.selectById(archived.getId()).getStatus(),
+                "已存档任务不自动重跑（防重复扣费），交超时终态");
+    }
+
+    private GenerateTask insertRunningCrashedTask(LocalDateTime createdAt, LocalDateTime expiresAt) {
+        GenerateTask t = new GenerateTask();
+        t.setTaskId("task_fix_" + System.nanoTime());
+        t.setTokenId(1L);
+        t.setGroupCode("fix.model");
+        t.setStatus("RUNNING");
+        t.setImageCount(1);
+        t.setCreatedAt(createdAt);
+        t.setUpdatedAt(createdAt);
+        t.setNextPollTime(createdAt);
+        t.setExpiresAt(expiresAt);
+        taskMapper.insert(t);
+        return t;
+    }
+
+    @org.junit.jupiter.api.DisplayName("修2b：换候选全满退队时清掉上次尝试的存档——重领后再崩溃仍在清扫②射程内")
+    @Test
+    void requeueClearsArchivedUpstreamRequest() throws Exception {
+        Channel a = seedChannel("退队A", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-requeue");
+        Channel b = seedChannel("退队B", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-requeue"); // 同账号
+        seedGroup("rq.model", "0.01", List.of(a, b), List.of("m1", "m2"));
+        String sk = seedToken(1L, "sk-rq-aaaaaaaaaa", "10.00", null);
+        setCapacityOf(a, "sk-requeue", 1);
+        refreshSnapshot();
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(500).withBody("{\"error\":{\"message\":\"boom\"}}")));
+
+        submit(sk, "{\"model\":\"rq.model\",\"prompt\":\"x\"}");
+        // A 尝试失败（重试类）→ B 未试但同账号无空槽 → 退队；退队必须清掉 A 尝试的存档
+        Awaitility.await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            GenerateTask t = taskMapper.selectList(null).getFirst();
+            assertEquals("SUBMITTED", t.getStatus(), "应退队保留进度而非失败");
+            assertEquals(1, t.getAttemptCount().intValue());
+            assertNull(t.getUpstreamRequest(), "退队时上次尝试的存档必须清掉");
+            assertNull(t.getChannelId());
+        });
+    }
+
+    @org.junit.jupiter.api.DisplayName("修3：组间公平轮——共享账号容量2时，A、B 两组各领一条（旧实现 A 组抽干两条，B 组饿死）")
+    @Test
+    void crossGroupFairSharingOfAccountSlots() {
+        Channel a = seedChannel("公平A", "OPENAI_ASYNC_TASK", WM.baseUrl() + "/v1", "sk-fair",
+                Map.of("flavor", "nezha"));
+        seedGroup("fa.model", "0.01", List.of(a), List.of("m"));
+        seedGroup("fb.model", "0.01", List.of(a), List.of("m")); // 同渠道同账号挂两个分组
+        setCapacityOf(a, "sk-fair", 2);
+        refreshSnapshot();
+        // 异步上游受理后一直 processing：领取的槽位在断言窗口内不释放，公平分布可静态断言
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(202).withBody("{\"id\":\"job_fair_{{randomInt lower=1 upper=999999}}\"}")
+                        .withTransformers("response-template")));
+        WM.stubFor(WireMock.get(WireMock.urlMatching("/v1/images/jobs/job_fair_.*"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"status\":\"processing\"}")));
+
+        GenerateTask ta1 = insertSubmittedTask("fa.model", 0, null);
+        GenerateTask ta2 = insertSubmittedTask("fa.model", 0, null);
+        GenerateTask tb1 = insertSubmittedTask("fb.model", 0, null);
+        // helper 不写 biz_request：领取后 SubmitPayload.parse(null) 会在链路外抛异常触发回退清渠道，断言前必须补上。
+        // 补写期间用未来 next_poll_time 挡住后台派发器抢跑（抢跑→parse 失败→回退清渠道=本测试随机红），放行后手动扫描
+        jdbc.update("UPDATE generate_task SET biz_request = '{\"model\":\"fa.model\",\"prompt\":\"x\"}', "
+                + "next_poll_time = NOW() + INTERVAL 1 HOUR "
+                + "WHERE id IN (" + ta1.getId() + "," + ta2.getId() + "," + tb1.getId() + ")");
+
+        jdbc.update("UPDATE generate_task SET next_poll_time = NOW() "
+                + "WHERE id IN (" + ta1.getId() + "," + ta2.getId() + "," + tb1.getId() + ")");
+        submitExecutor.scanDue();
+
+        // 公平轮：第 1 轮 A 领 TA1、B 领 TB1，第 2 轮 A 领 TA2（槽位已满留队）。
+        // 旧实现：A 组 while 抽干 TA1+TA2，TB1 永远等不到
+        assertNotNull(taskMapper.selectById(ta1.getId()).getChannelId(), "TA1 应领取");
+        assertNotNull(taskMapper.selectById(tb1.getId()).getChannelId(),
+                "公平轮：B 分组必须同轮拿到共享账号的槽位");
+        assertNull(taskMapper.selectById(ta2.getId()).getChannelId(),
+                "容量 2 已满，TA2 应留队等待而非挤掉 B 组槽位");
+    }
+
+    @org.junit.jupiter.api.DisplayName("修9：FAILOVER 首选账号被暂停（容量0）→ 跳过首选由健康备用接单，不再卡死整组")
+    @Test
+    void failoverSkipsPausedPreferredAccount() throws Exception {
+        Channel c1 = seedChannel("首选", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-paused");
+        Channel c2 = seedChannel("备用", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-healthy");
+        seedGroup("fp.model", "0.01", List.of(c1, c2), List.of("m", "m"));
+        String sk = seedToken(1L, "sk-fp-aaaaaaaaaa", "10.00", null);
+        setCapacityOf(c1, "sk-paused", 0); // 管理员暂停首选
+        refreshSnapshot();
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .withHeader("Authorization", containing("sk-paused"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"url\":\"https://cdn.result/never.png\"}]}")));
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .withHeader("Authorization", containing("sk-healthy"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"url\":\"https://cdn.result/ok.png\"}]}")));
+
+        String resp = submitAndAwait(sk, "{\"model\":\"fp.model\",\"prompt\":\"x\"}");
+        assertEquals("SUCCEEDED", field(resp, "status"));
+        GenerateTask t = taskMapper.selectList(null).getFirst();
+        assertEquals(c2.getId(), t.getChannelId(), "暂停的首选必须被跳过（旧实现返回 null 整组卡死）");
+        assertEquals(0, WM.findAll(WireMock.postRequestedFor(urlEqualTo("/v1/images/generations"))
+                .withHeader("Authorization", containing("sk-paused"))).size(), "暂停账号不应被打到");
+    }
+
+    @org.junit.jupiter.api.DisplayName("修8：单渠道 429 冷却——任务退队等恢复而非直接 UPSTREAM_ALL_FAILED，冷却过后重试成功")
+    @Test
+    void rateLimitCooldownRequeuesInsteadOfFailing() throws Exception {
+        config.updateAll(Map.of(ConfigKeys.RATE_LIMIT_COOLDOWN_MS.getKey(), "1000"));
+        Channel ch = seedChannel("限速上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-429");
+        seedGroup("rl.model", "0.01", List.of(ch), List.of("m"));
+        String sk = seedToken(1L, "sk-rl-aaaaaaaaaa", "10.00", null);
+        refreshSnapshot();
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(429).withBody("{\"error\":{\"message\":\"rate\"}}")));
+
+        String taskId = field(submit(sk, "{\"model\":\"rl.model\",\"prompt\":\"x\"}"), "taskId");
+        Awaitility.await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            GenerateTask t = taskByTaskId(taskId);
+            assertEquals("SUBMITTED", t.getStatus(), "429 冷却应退队等待而非失败（旧实现直接 UPSTREAM_ALL_FAILED）");
+            assertNull(t.getChannelId());
+        });
+        // 冷却（1s）+ 退队退避（3s）过后派发器重试 → 200
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"data\":[{\"url\":\"https://cdn.result/rl.png\"}]}")));
+        GenerateTask t = awaitTerminal(taskId);
+        assertEquals("SUCCEEDED", t.getStatus());
+        assertTrue(t.getAttemptCount() >= 2, "冷却后应重试成功: attempts=" + t.getAttemptCount());
+        config.updateAll(Map.of(ConfigKeys.RATE_LIMIT_COOLDOWN_MS.getKey(), "30000"));
+    }
+
+    @org.junit.jupiter.api.DisplayName("修5：账号级停用幂等不重复建批；单渠道启用从批次摘除，批内清空即关批")
+    @Test
+    void accountDisableIdempotentAndEnableSettlesBatch() {
+        Channel a = seedChannel("批A", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-batch");
+        Channel b = seedChannel("批B", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-batch"); // 同账号
+        ModelGroup g = seedGroup("bt.model", "0.01", List.of(a, b), List.of("m1", "m2"));
+        String accountKey = accountRegistry.computeKey(WM.baseUrl() + "/v1", "sk-batch");
+
+        channelOps.autoDisableAccount(accountKey, "没米");
+        channelOps.autoDisableAccount(accountKey, "没米"); // 模拟并发第二单再触发
+        assertEquals(1, disableBatchMapper.selectList(null).size(),
+                "enabled=0 幂等闸：第二次调用不得重复建批（旧实现只改 status，并发 402 各建一批）");
+        assertEquals(0, channelMapper.selectById(a.getId()).getEnabled().intValue());
+        assertEquals(4, channelMapper.selectById(a.getId()).getStatus().intValue());
+
+        // 单渠道启用 A：从批次摘除 A（其成员一并摘除），批内还剩 B → 批次仍开放
+        channelOps.enable(a.getId());
+        DisableBatch batch = disableBatchMapper.selectList(null).getFirst();
+        assertNull(batch.getRestoredAt(), "批内还有 B，批次不得提前关闭");
+        assertEquals(List.of(b.getId()), com.drawbridge.common.JsonUtil.readTree(batch.getChannelIds())
+                .valueStream().map(n -> n.asLong()).toList(), "批次渠道清单应只剩 B");
+        assertEquals(1, memberByModel(g, a, "m1").getEnabled().intValue(), "A 的联动成员随渠道启用恢复");
+        assertEquals(0, memberByModel(g, b, "m2").getEnabled().intValue(), "B 的成员保持停用");
+
+        // B 也启用 → 批内清空 → 批次关闭（恢复按钮消失）
+        channelOps.enable(b.getId());
+        batch = disableBatchMapper.selectList(null).getFirst();
+        assertNotNull(batch.getRestoredAt(), "批内渠道清空必须关闭批次");
+        assertEquals(1, memberByModel(g, b, "m2").getEnabled().intValue());
+    }
+
+    @org.junit.jupiter.api.DisplayName("修6：渠道启用只复活联动停用的成员——管理员手动停的（disable_source=admin）不被顺手拉起")
+    @Test
+    void enableRestoresOnlyCascadeDisabledMembers() throws Exception {
+        Channel ch = seedChannel("出处上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-src");
+        ModelGroup g = seedGroup("src.model", "0.01", List.of(ch, ch), List.of("m1", "m2"));
+        GroupMember manual = memberByModel(g, ch, "m2");
+        String admin = adminToken();
+        mvc.perform(put("/admin/groups/" + g.getId() + "/members/" + manual.getId())
+                        .header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"enabled\":0}"))
+                .andExpect(status().isOk());
+        assertEquals("admin", memberMapper.selectById(manual.getId()).getDisableSource(),
+                "手动停用必须记 admin 出处");
+
+        // 渠道手动停用 → 联动停 m1（m2 已停，不再动）
+        channelOps.disable(ch.getId(), "维护");
+        assertEquals("cascade", memberByModel(g, ch, "m1").getDisableSource(), "联动停用必须记 cascade 出处");
+        assertEquals("admin", memberByModel(g, ch, "m2").getDisableSource(), "手动停用出处不得被联动覆盖");
+
+        // 启用渠道：只复活 m1
+        channelOps.enable(ch.getId());
+        assertEquals(1, memberByModel(g, ch, "m1").getEnabled().intValue());
+        assertNull(memberByModel(g, ch, "m1").getDisableSource(), "恢复后出处应清掉");
+        assertEquals(0, memberByModel(g, ch, "m2").getEnabled().intValue(),
+                "管理员手动停用的成员不得被渠道启用复活");
+    }
+
+    private GroupMember memberByModel(ModelGroup g, Channel ch, String model) {
+        return memberMapper.selectList(com.baomidou.mybatisplus.core.toolkit.Wrappers
+                        .<GroupMember>lambdaQuery()
+                        .eq(GroupMember::getGroupId, g.getId())
+                        .eq(GroupMember::getChannelId, ch.getId())
+                        .eq(GroupMember::getUpstreamModel, model))
+                .getFirst();
+    }
+
+    @org.junit.jupiter.api.DisplayName("修7：分组有在途任务时拒绝改名——旧编码任务不能被孤儿化；任务终态后放行")
+    @Test
+    void renameBlockedWhileTasksInflight() throws Exception {
+        Channel ch = seedChannel("改名上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-rn");
+        ModelGroup g = seedGroup("rn.model", "0.01", List.of(ch), List.of("m"));
+        String admin = adminToken();
+
+        insertSubmittedTask("rn.model", 0, null);
+        mvc.perform(put("/admin/groups/" + g.getId()).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"groupCode\":\"rn2.model\",\"strategy\":\"FAILOVER\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.msg").value(org.hamcrest.Matchers.containsString("在途任务")));
+
+        jdbc.update("UPDATE generate_task SET status='FAILED', error_code='TEST' WHERE group_code='rn.model'");
+        mvc.perform(put("/admin/groups/" + g.getId()).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"groupCode\":\"rn2.model\",\"strategy\":\"FAILOVER\"}"))
+                .andExpect(status().isOk());
+        assertEquals("rn2.model", groupMapper.selectById(g.getId()).getGroupCode());
+    }
+
+    // ------------------------------------------------------------------ 第二轮交叉测试修复（2026-10-13 下午）
+
+    @org.junit.jupiter.api.DisplayName("新1：容量写入口径——同 Key 新建渠道不动已有池子；换到已有账号不覆盖；新账号才带表单值")
+    @Test
+    void capacityWriteOnlyTouchesNewAccounts() throws Exception {
+        String admin = adminToken();
+        String base = WM.baseUrl() + "/v1";
+        java.util.function.BiFunction<String, Integer, Long> create = (key, cap) -> {
+            try {
+                String body = "{\"name\":\"容量渠道\",\"protocol\":\"OPENAI_IMAGES_SYNC\","
+                        + "\"baseUrl\":\"" + base + "\",\"apiKey\":\"" + key + "\",\"maxConcurrency\":" + cap + "}";
+                String resp = mvc.perform(post("/admin/channels").header("X-Admin-Token", admin)
+                                .header("Content-Type", "application/json").content(body))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+                return com.drawbridge.common.JsonUtil.readTree(resp).path("data").asLong();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
+
+        long aId = create.apply("sk-cap-prot", 20);
+        String protKey = accountRegistry.computeKey(base, "sk-cap-prot");
+        assertEquals(20, accountRegistry.capacityOf(protKey));
+
+        // 同 Key 再挂一个渠道（表单默认 5）：已有账号池子必须原封不动
+        create.apply("sk-cap-prot", 5);
+        assertEquals(20, accountRegistry.capacityOf(protKey), "同 Key 新建渠道不得把已有账号容量改回表单默认值");
+
+        // 另一个已有账号（容量 7）：编辑渠道换到它，不得被表单旧值覆盖
+        create.apply("sk-other-key", 7);
+        String otherKey = accountRegistry.computeKey(base, "sk-other-key");
+        long bId = create.apply("sk-cap-prot2", 5); // 第三个渠道准备换 Key
+        mvc.perform(put("/admin/channels/" + bId).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"name\":\"容量换绑\",\"protocol\":\"OPENAI_IMAGES_SYNC\","
+                                + "\"baseUrl\":\"" + base + "\",\"apiKey\":\"sk-other-key\",\"maxConcurrency\":5}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accountChanged").value(true));
+        assertEquals(7, accountRegistry.capacityOf(otherKey), "换绑到已有账号不得覆盖该账号容量");
+
+        // 换到全新账号：表单值带走初始化
+        mvc.perform(put("/admin/channels/" + bId).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"name\":\"容量换绑\",\"protocol\":\"OPENAI_IMAGES_SYNC\","
+                                + "\"baseUrl\":\"" + base + "\",\"apiKey\":\"sk-brand-new\",\"maxConcurrency\":9}"))
+                .andExpect(status().isOk());
+        assertEquals(9, accountRegistry.capacityOf(accountRegistry.computeKey(base, "sk-brand-new")));
+
+        // 账号没变：管理员正经调自己的池子 → 生效
+        mvc.perform(put("/admin/channels/" + bId).header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"name\":\"容量换绑\",\"protocol\":\"OPENAI_IMAGES_SYNC\","
+                                + "\"baseUrl\":\"" + base + "\",\"apiKey\":\"sk-brand-new\",\"maxConcurrency\":12}"))
+                .andExpect(status().isOk());
+        assertEquals(12, accountRegistry.capacityOf(accountRegistry.computeKey(base, "sk-brand-new")),
+                "同账号编辑容量必须生效");
+    }
+
+    @org.junit.jupiter.api.DisplayName("新2：整批恢复只拉起仍处于自动停用态的渠道/成员——批次期间手动停的不复活")
+    @Test
+    void restoreBatchSkipsManuallyDisabled() throws Exception {
+        Channel a = seedChannel("批A", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-batch2");
+        Channel b = seedChannel("批B", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-batch2");
+        ModelGroup g = seedGroup("rb.model", "0.01", List.of(a, b), List.of("m1", "m2"));
+        String accountKey = accountRegistry.computeKey(WM.baseUrl() + "/v1", "sk-batch2");
+
+        channelOps.autoDisableAccount(accountKey, "没米");
+        com.drawbridge.domain.entity.DisableBatch batch =
+                disableBatchMapper.selectList(null).getFirst();
+
+        // 批次建好后：管理员手动停 A（status=0）、手动停 m2（source=admin）
+        channelOps.disable(a.getId(), "管理员手动停");
+        GroupMember m2 = memberByModel(g, b, "m2");
+        mvc.perform(put("/admin/groups/" + g.getId() + "/members/" + m2.getId())
+                        .header("X-Admin-Token", adminToken())
+                        .header("Content-Type", "application/json")
+                        .content("{\"enabled\":0}"))
+                .andExpect(status().isOk());
+
+        channelOps.restoreBatch(batch.getId());
+
+        Channel aAfter = channelMapper.selectById(a.getId());
+        assertEquals(0, aAfter.getEnabled().intValue(), "批次期间手动停用的渠道不得被整批恢复拉起");
+        assertEquals(0, aAfter.getStatus().intValue());
+        Channel bAfter = channelMapper.selectById(b.getId());
+        assertEquals(1, bAfter.getEnabled().intValue(), "仍处于余额停用的渠道应被恢复");
+        assertEquals(1, memberByModel(g, a, "m1").getEnabled().intValue());
+        GroupMember m2After = memberMapper.selectById(m2.getId());
+        assertEquals(0, m2After.getEnabled().intValue(), "批次期间手动停用的成员不得被整批恢复拉起");
+        assertEquals("admin", m2After.getDisableSource());
+        assertNotNull(disableBatchMapper.selectById(batch.getId()).getRestoredAt());
+    }
+
+    @org.junit.jupiter.api.DisplayName("未净1：A 刚 5xx、B 正冷却——nextHop 识别'未试但暂时不可用'退队，不再误判 UPSTREAM_ALL_FAILED")
+    @Test
+    void untriedCoolingCandidateCausesRequeueNotFail() throws Exception {
+        Channel a = seedChannel("五零零", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-c1");
+        Channel b = seedChannel("冷却中", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-c2");
+        seedGroup("uc.model", "0.01", List.of(a, b), List.of("m1", "m2"));
+        String sk = seedToken(1L, "sk-uc-aaaaaaaaaa", "10.00", null);
+        refreshSnapshot();
+        cooldownRegistry.cool(b.getId()); // B 进入 429 冷却（结构可用，暂时不可用）
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .withHeader("Authorization", containing("sk-c1"))
+                .willReturn(aResponse().withStatus(500).withBody("{\"error\":{\"message\":\"boom\"}}")));
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/generations"))
+                .withHeader("Authorization", containing("sk-c2"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"data\":[{\"url\":\"https://cdn.result/x.png\"}]}")));
+
+        String taskId = field(submit(sk, "{\"model\":\"uc.model\",\"prompt\":\"x\"}"), "taskId");
+        // A 尝试 5xx（未熔断）→ 候选列表只剩试过的 A → 旧实现直接 UPSTREAM_ALL_FAILED；现在应识别 B 在冷却 → 退队
+        Awaitility.await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            GenerateTask t = taskByTaskId(taskId);
+            assertEquals("SUBMITTED", t.getStatus(), "有未试但暂时不可用的候选应退队等待而非失败");
+            assertNull(t.getChannelId());
+        });
+    }
+
+    @org.junit.jupiter.api.DisplayName("未净2：分组停用后排队任务立即结构性失败，不等 30 分钟排队死线")
+    @Test
+    void disabledGroupFailsQueuedImmediately() throws Exception {
+        Channel ch = seedChannel("停组上游", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-dg");
+        ModelGroup g = seedGroup("dg.model", "0.01", List.of(ch), List.of("m"));
+        String admin = adminToken();
+        GenerateTask queued = insertSubmittedTask("dg.model", 0, null);
+        jdbc.update("UPDATE generate_task SET biz_request = '{\"model\":\"dg.model\",\"prompt\":\"x\"}', "
+                + "next_poll_time = NOW() + INTERVAL 1 HOUR WHERE id = " + queued.getId());
+
+        mvc.perform(post("/admin/groups/" + g.getId() + "/disable").header("X-Admin-Token", admin))
+                .andExpect(status().isOk());
+        refreshSnapshot();
+        // 未来 next_poll_time 挡住了后台派发器抢跑；现在放行并直扫一轮
+        jdbc.update("UPDATE generate_task SET next_poll_time = NOW() WHERE id = " + queued.getId());
+        submitExecutor.scanDue();
+
+        GenerateTask t = taskMapper.selectById(queued.getId());
+        assertEquals("FAILED", t.getStatus(), "停用分组的排队任务应立即失败: status=" + t.getStatus()
+                + " nextPoll=" + t.getNextPollTime() + " attempts=" + t.getAttemptCount());
+        assertEquals("NO_AVAILABLE_CHANNEL", t.getErrorCode());
+    }
+
+    // ------------------------------------------------------------------ apiyi（gpt-image 系 + nano 系）
+
+    private static final byte[] REF_PNG = {(byte) 0x89, 'P', 'N', 'G', 0xD, 0xA, 0x1A, 0xA, 0, 1};
+
+    @org.junit.jupiter.api.DisplayName("apiyi image 系：openai_edits 渠道带参考图 → 网关代下载走 multipart edits，同步出图")
+    @Test
+    void apiyiEditsMultipartChain() throws Exception {
+        Channel ch = seedChannel("apiyi同步", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1",
+                "sk-apiyi", Map.of("refImageStyle", "openai_edits", "timeoutMs", 300000));
+        seedGroup("img25", "0.02", List.of(ch), List.of("gpt-image-2.5-flare"));
+        String sk = seedToken(1L, "sk-apiyi-img-aaaa", "10.00", null);
+        refreshSnapshot();
+        WM.stubFor(WireMock.get(urlEqualTo("/refs/a.png"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "image/png").withBody(REF_PNG)));
+        WM.stubFor(WireMock.post(urlEqualTo("/v1/images/edits"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"data\":[{\"b64_json\":\"aGVsbG8=\"}]}")));
+
+        String resp = submitAndAwait(sk, "{\"model\":\"img25\",\"prompt\":\"改图\",\"aspectRatio\":\"16:9\",\"resolution\":\"2k\","
+                + "\"images\":[\"" + WM.baseUrl() + "/refs/a.png\"]}");
+
+        assertEquals("SUCCEEDED", field(resp, "status"));
+        assertEquals("data:image/png;base64,aGVsbG8=",
+                com.drawbridge.common.JsonUtil.readTree(resp).path("data").path("result").path("urls").get(0).asText());
+        GenerateTask task = taskByTaskId(field(resp, "taskId"));
+        assertEquals(WM.baseUrl() + "/v1/images/edits", task.getUpstreamUrl(), "带参考图应切 edits 端点");
+        // multipart 形状：文件字段 image[]（代下载后上传）+ 表单参数
+        String upstreamBody = WM.findAll(WireMock.postRequestedFor(WireMock.urlEqualTo("/v1/images/edits")))
+                .get(0).getBodyAsString();
+        assertTrue(upstreamBody.contains("name=\"image[]\"; filename=\"a.png\""), upstreamBody);
+        assertTrue(upstreamBody.contains("name=\"model\"\r\n\r\ngpt-image-2.5-flare"), upstreamBody);
+        assertTrue(upstreamBody.contains("name=\"size\"\r\n\r\n2048x1152"), upstreamBody);
+        // 渠道级超时覆盖进 cmd：存档路径为 edits、任务成功即代表整个链路按新配置跑通
+    }
+
+    @org.junit.jupiter.api.DisplayName("apiyi nano 系：Gemini 原生 generateContent，parts 混排取最后一张")
+    @Test
+    void nanoChainTakesLastImage() throws Exception {
+        Channel ch = seedChannel("apiyi nano", "GEMINI_NATIVE", WM.baseUrl(), "sk-nano",
+                Map.of("timeoutMs", 300000));
+        seedGroup("nano-pro", "0.09", List.of(ch), List.of("gemini-3-pro-image-preview"));
+        String sk = seedToken(1L, "sk-nano-chain-aaa", "10.00", null);
+        refreshSnapshot();
+        String url = "/v1beta/models/gemini-3-pro-image-preview:generateContent";
+        WM.stubFor(WireMock.post(urlEqualTo(url))
+                .willReturn(aResponse().withStatus(200).withBody("""
+                        {"candidates":[{"content":{"parts":[
+                            {"text":"中间说明"},
+                            {"inlineData":{"mimeType":"image/png","data":"QUFBQQ=="}},
+                            {"inlineData":{"mimeType":"image/jpeg","data":"QkFBQQ=="}}
+                        ]},"finishReason":"STOP"}]}
+                        """)));
+
+        String resp = submitAndAwait(sk, "{\"model\":\"nano-pro\",\"prompt\":\"海报\",\"resolution\":\"2k\",\"aspectRatio\":\"16:9\"}");
+
+        assertEquals("SUCCEEDED", field(resp, "status"));
+        // 最后一张 = 终稿（思考中间稿丢弃），mimeType 以响应为准
+        assertEquals("data:image/jpeg;base64,QkFBQQ==",
+                com.drawbridge.common.JsonUtil.readTree(resp).path("data").path("result").path("urls").get(0).asText());
+        GenerateTask task = taskByTaskId(field(resp, "taskId"));
+        assertEquals(WM.baseUrl() + url, task.getUpstreamUrl());
+        String upstreamBody = task.getUpstreamRequest();
+        assertTrue(upstreamBody.contains("\"responseModalities\":[\"IMAGE\"]"), upstreamBody);
+        assertTrue(upstreamBody.contains("\"imageSize\":\"2K\""), upstreamBody);
+        assertTrue(upstreamBody.contains("\"aspectRatio\":\"16:9\""), upstreamBody);
+    }
+
+    @org.junit.jupiter.api.DisplayName("nano 系审核拦截：HTTP 200 无图段 → CONTENT_REJECTED 终态")
+    @Test
+    void nanoContentBlockedTerminal() throws Exception {
+        Channel ch = seedChannel("nano拦截", "GEMINI_NATIVE", WM.baseUrl(), "sk-nano-b");
+        seedGroup("nano-b", "0.09", List.of(ch), List.of("gemini-3-pro-image-preview"));
+        String sk = seedToken(1L, "sk-nano-block-aaa", "10.00", null);
+        refreshSnapshot();
+        WM.stubFor(WireMock.post(urlEqualTo("/v1beta/models/gemini-3-pro-image-preview:generateContent"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"candidates\":[{\"content\":{\"parts\":null},\"finishReason\":\"SAFETY\"}]}")));
+
+        String resp = submitAndAwait(sk, "{\"model\":\"nano-b\",\"prompt\":\"违规\"}");
+
+        assertEquals("FAILED", field(resp, "status"));
+        assertEquals("CONTENT_REJECTED", field(resp, "error.code"));
+        assertTrue(field(resp, "error.message").contains("SAFETY"), field(resp, "error.message"));
+    }
+
+    @org.junit.jupiter.api.DisplayName("参考图拉取失败：任务失败但渠道不受惩罚（不喂熔断不停渠道）")
+    @Test
+    void refImageFetchFailureSavesTheChannel() throws Exception {
+        Channel ch = seedChannel("apiyi图生图", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1",
+                "sk-ref-fail", Map.of("refImageStyle", "openai_edits"));
+        seedGroup("reffail", "0.02", List.of(ch), List.of("m"));
+        String sk = seedToken(1L, "sk-ref-fail-aaaa", "10.00", null);
+        refreshSnapshot();
+        WM.stubFor(WireMock.get(urlEqualTo("/missing.png"))
+                .willReturn(aResponse().withStatus(404)));
+
+        String resp = submitAndAwait(sk, "{\"model\":\"reffail\",\"prompt\":\"x\",\"images\":[\""
+                + WM.baseUrl() + "/missing.png\"]}");
+
+        assertEquals("FAILED", field(resp, "status"));
+        assertTrue(field(resp, "error.message").contains("参考图下载失败"), field(resp, "error.message"));
+        // 锅在图床：渠道不喂熔断不停用，健康状态原样
+        Channel after = channelMapper.selectById(ch.getId());
+        assertEquals(1, after.getEnabled());
+        assertEquals(1, after.getStatus());
+    }
+
+    @org.junit.jupiter.api.DisplayName("apiyi 同步模型按协议族过滤：image 系不混 nano/gemini，nano 系不混聊天模型")
+    @Test
+    void syncModelsFiltersByProtocolFamily() throws Exception {
+        Channel img = seedChannel("apiyi同步", "OPENAI_IMAGES_SYNC", WM.baseUrl() + "/v1", "sk-f1");
+        Channel nano = seedChannel("apiyi nano", "GEMINI_NATIVE", WM.baseUrl(), "sk-f2");
+        String admin = adminToken();
+        refreshSnapshot();
+
+        WM.stubFor(WireMock.get(urlEqualTo("/v1/models"))
+                .willReturn(aResponse().withStatus(200).withBody("""
+                        {"data":[{"id":"gpt-image-2.5-flare"},{"id":"gpt-image-2-all"},
+                                 {"id":"gemini-3-pro-image-preview"},{"id":"gpt-5.4-mini"},{"id":"text-embedding-3"}]}
+                        """)));
+        WM.stubFor(WireMock.get(urlEqualTo("/v1beta/models"))
+                .willReturn(aResponse().withStatus(200).withBody("""
+                        {"models":[{"name":"models/gemini-3-pro-image-preview"},{"name":"models/gemini-nano-banana-2.1"},
+                                   {"name":"models/gemini-3.6-flash"}]}
+                        """)));
+
+        String r1 = mvc.perform(post("/admin/channels/" + img.getId() + "/sync-models")
+                        .header("X-Admin-Token", admin))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var d1 = com.drawbridge.common.JsonUtil.readTree(r1).path("data");
+        assertEquals(2, d1.path("count").asInt(), "image 渠道只收 gpt-image 两款");
+        assertEquals(3, d1.path("filtered").asInt(), "gemini 生图/聊天/向量化被过滤");
+
+        String r2 = mvc.perform(post("/admin/channels/" + nano.getId() + "/sync-models")
+                        .header("X-Admin-Token", admin))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var d2 = com.drawbridge.common.JsonUtil.readTree(r2).path("data");
+        assertEquals(2, d2.path("count").asInt(), "nano 渠道只收 gemini 生图两款");
+        assertEquals(1, d2.path("filtered").asInt(), "gemini 聊天模型被过滤");
+
+        // model_code 按字典序：'-'(0x2D) < '.'(0x2E)，gpt-image-2-all 排在 gpt-image-2.5-flare 前
+        List<String> imgCodes = jdbc.queryForList(
+                "SELECT model_code FROM upstream_model WHERE channel_id = " + img.getId() + " ORDER BY model_code",
+                String.class);
+        assertEquals(List.of("gpt-image-2-all", "gpt-image-2.5-flare"), imgCodes);
+        List<String> nanoCodes = jdbc.queryForList(
+                "SELECT model_code FROM upstream_model WHERE channel_id = " + nano.getId() + " ORDER BY model_code",
+                String.class);
+        assertEquals(List.of("gemini-3-pro-image-preview", "gemini-nano-banana-2.1"), nanoCodes);
+    }
+
+    @org.junit.jupiter.api.DisplayName("裸域名 SPA fallback：/models 回 200 HTML 不算命中，回退 /v1/models；probe 不假阳性")
+    @Test
+    void spaHtmlFallbackDoesNotFoolModelsProbe() throws Exception {
+        // apiyi 实测：裸域名 /models 返回 200 + HTML 官网页（SPA fallback），必须继续回退
+        Channel ch = seedChannel("apiyi裸域", "OPENAI_IMAGES_SYNC", WM.baseUrl(), "sk-spa");
+        String admin = adminToken();
+        refreshSnapshot();
+        WM.stubFor(WireMock.get(urlEqualTo("/models"))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "text/html")
+                        .withBody("<!doctype html><html><body>官网首页</body></html>")));
+        WM.stubFor(WireMock.get(urlEqualTo("/v1/models"))
+                .willReturn(aResponse().withStatus(401)
+                        .withBody("{\"error\":{\"message\":\"Invalid token\",\"type\":\"shell_api_error\"}}")));
+
+        // sync-models：不炸非 JSON，而是把 /v1/models 的 401 报出来
+        mvc.perform(post("/admin/channels/" + ch.getId() + "/sync-models").header("X-Admin-Token", admin))
+                .andExpect(status().isBadRequest());
+        // probe：不是"连通正常"假阳性，而是 Key 无效
+        String r = mvc.perform(post("/admin/channels/probe")
+                        .header("X-Admin-Token", admin)
+                        .header("Content-Type", "application/json")
+                        .content("{\"protocol\":\"OPENAI_IMAGES_SYNC\",\"baseUrl\":\"" + WM.baseUrl()
+                                + "\",\"apiKey\":\"sk-spa\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertTrue(com.drawbridge.common.JsonUtil.readTree(r).path("data").path("result").asText()
+                .contains("Key 无效"), r);
     }
 }

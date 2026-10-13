@@ -218,6 +218,61 @@ class OpenAiAsyncTaskProviderTest {
     }
 
     @Test
+    void apimartUnifiedTaskStyle() {
+        // APIMart（apib.ai）统一任务协议：{code,data[0].task_id} 提交壳 + /tasks/{id} 轮询
+        // + result.images[*].url[] 是数组 + 失败原因在 data.error.message——全靠 extra_config 声明，零代码适配
+        ChannelConfigService.ChannelRuntime apimart = new ChannelConfigService.ChannelRuntime(
+                wm.baseUrl() + "/v1", "sk-x", Map.of(),
+                Map.of("idField", "data[0].task_id",
+                       "queryPath", "/tasks/{id}",
+                       "statusField", "data.status",
+                       "urlField", "data.result.images[*].url[*]",
+                       "refImageStyle", "image_urls",
+                       "requestStyle", "ratioTier"));
+        ImageProvider.SubmitCommand withImg = new ImageProvider.SubmitCommand(
+                "gemini-nano-banana-2.1", "橘猫", 1, "2k", "16:9", null,
+                List.of("https://ref.example/cat.jpg"), null, 10_000);
+        wm.stubFor(post(urlEqualTo("/v1/images/generations"))
+                .willReturn(aResponse().withStatus(200)
+                        .withBody("{\"code\":200,\"data\":[{\"status\":\"submitted\",\"task_id\":\"task_01KABC\"}]}")));
+        ImageProvider.SubmitOutcome.Accepted accepted = assertInstanceOf(
+                ImageProvider.SubmitOutcome.Accepted.class, provider.submit(withImg, apimart));
+        assertEquals("task_01KABC", accepted.upstreamTaskId());
+
+        // 请求体：size=比例串直传（ratioTier），档位走独立 resolution 字段，参考图 image_urls 数组
+        String body = wm.findAll(postRequestedFor(urlEqualTo("/v1/images/generations")))
+                .get(0).getBodyAsString();
+        assertTrue(body.contains("\"size\":\"16:9\""), body);
+        assertTrue(body.contains("\"resolution\":\"2k\""), body);
+        assertTrue(body.contains("\"image_urls\":[\"https://ref.example/cat.jpg\"]"), body);
+
+        // 轮询：submitted → RUNNING；completed → url 数组全部展开
+        wm.stubFor(get(urlEqualTo("/v1/tasks/task_01KABC"))
+                .willReturn(aResponse().withStatus(200).withBody(
+                        "{\"code\":200,\"data\":{\"id\":\"task_01KABC\",\"status\":\"submitted\",\"progress\":0}}")));
+        assertEquals(ImageProvider.PollOutcome.Phase.RUNNING, provider.poll("task_01KABC", apimart).phase());
+
+        wm.stubFor(get(urlEqualTo("/v1/tasks/task_01KABC"))
+                .willReturn(aResponse().withStatus(200).withBody("""
+                        {"code":200,"data":{"id":"task_01KABC","status":"completed","progress":100,
+                        "result":{"images":[{"url":["https://cdn.out/1.png","https://cdn.out/2.png"],
+                        "expires_at":1791417625}]}}}
+                        """)));
+        ImageProvider.PollOutcome ok = provider.poll("task_01KABC", apimart);
+        assertEquals(ImageProvider.PollOutcome.Phase.SUCCEEDED, ok.phase());
+        assertEquals(List.of("https://cdn.out/1.png", "https://cdn.out/2.png"), ok.resultUrls());
+
+        // 失败原因在 data.error.message
+        wm.stubFor(get(urlEqualTo("/v1/tasks/task_01KABC"))
+                .willReturn(aResponse().withStatus(200).withBody(
+                        "{\"code\":200,\"data\":{\"id\":\"task_01KABC\",\"status\":\"failed\","
+                                + "\"error\":{\"code\":500,\"message\":\"内容安全拦截\",\"type\":\"server_error\"}}}")));
+        ImageProvider.PollOutcome bad = provider.poll("task_01KABC", apimart);
+        assertEquals(ImageProvider.PollOutcome.Phase.FAILED, bad.phase());
+        assertEquals("内容安全拦截", bad.failMessage());
+    }
+
+    @Test
     void pollHttpErrorPropagatesClassified() {
         wm.stubFor(get(urlEqualTo("/v1/images/jobs/j1"))
                 .willReturn(aResponse().withStatus(500).withBody("{\"error\":{\"message\":\"boom\"}}")));
